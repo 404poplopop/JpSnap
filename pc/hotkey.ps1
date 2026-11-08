@@ -1,4 +1,4 @@
-# JpSnap hotkey listener: Ctrl+Alt+J starts jpsnap.vbs. Runs hidden from the Startup folder.
+﻿# JpSnap hotkey listener: Ctrl+Alt+J starts jpsnap.vbs. Runs hidden from the Startup folder.
 # Shortcut (.lnk) hotkeys only work once Explorer has rescanned, so the hotkey is registered here instead.
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $log = Join-Path $dir 'hotkey.log'

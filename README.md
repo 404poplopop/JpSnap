@@ -5,26 +5,35 @@ Press **Ctrl+Alt+J**, drag over Japanese text anywhere on screen, and a small ov
 - every word with its kana reading, pitch accent line (top = high, bottom = low), part-of-speech colored underline and romaji
 - hover a word (or a punctuation mark) for its meaning, role in the sentence, how the form is built and why (including sound changes such as 8杯 = はっぱい), and its pitch type;
   hold **Alt** for the whole word (8 + 杯), **Shift** for its part of the sentence, each with how its pieces stack together; click plays what is selected
-- click a word to hear it, ▶ / Space to hear the sentence with phrase-by-phrase karaoke, *Slow* for slower speech
+- ⚡ **fast mode** (default on): a quick translation with readings in about 10 s, the full explanations replace it when they arrive (about 25 s)
+- click a word to hear it, ▶ / Space to hear the sentence with phrase-by-phrase karaoke, **1× / 0.7×** for slower speech
 - right-click a word or press ★ to save it to `Documents\JpSnap\deck.tsv` (Anki import); every snip goes to `history.jsonl`
+- ⚙ settings: server or this PC, server address, optional API key, fast mode, voice (Nanami / Keita), speech speed
 - drag to move, Esc / ✕ to close
 
 Translation runs through the Codex CLI (`codex exec`, model `gpt-6-luna`, JSON output schema) on your Codex subscription,
 or per run on your own OpenAI API key. Pitch accent comes from the Kanjium dictionary (GPT estimate as fallback, drawn faint).
-The voice is edge-tts `ja-JP-NanamiNeural` with word timings.
+The voice is edge-tts (`ja-JP-NanamiNeural` or `ja-JP-KeitaNeural`) with word timings.
 
 ## Layout
 
 | Path | Runs on | What |
 |---|---|---|
 | `jpsnap_core.py` | server and PC | `translate` (codex + pitch enrichment), `tts` (edge-tts + word marks), `selftest` |
-| `schema.json`, `prompt.txt`, `accents.txt` | server and PC | codex output schema, prompt, pitch dictionary |
+| `schema.json`, `prompt.txt`, `prompt_fast.txt`, `accents.txt` | server and PC | output schema (the fast one is cut from it), prompts, pitch dictionary |
 | `server/jp-translate` | server | ssh forced command; dispatches to `jpsnap_core.py` |
-| `pc/jpsnap.ps1` | PC | snip (native `ms-screenclip:`), WPF overlay, karaoke, deck |
+| `pc/jpsnap.ps1` | PC | entry: snip (native `ms-screenclip:`), overlay, lookup flow, events |
+| `pc/lib/config.ps1` | PC | `config.json`, input checks, DPAPI-encrypted API key |
+| `pc/lib/backend.ps1` | PC | runs the core over ssh or locally, background jobs |
+| `pc/lib/render.ps1` | PC | word blocks, pitch lines, tooltips, Alt/Shift hover, "now" strip |
+| `pc/lib/speech.ps1` | PC | voice cache, prefetch, karaoke |
+| `pc/lib/deck.ps1`, `pc/lib/settings.ps1` | PC | history and Anki deck; settings window |
+| `pc/ui/overlay.xaml`, `pc/ui/settings.xaml` | PC | the two windows |
 | `pc/hotkey.ps1` | PC | resident Ctrl+Alt+J listener (Startup folder) |
 | `pc/install.ps1` | PC | Start Menu entry, Startup listener, venv with edge-tts, selftest |
-| `pc/ui_test.ps1`, `pc/run_ui_test.ps1` | PC | session-1 UI test (UI Automation Invoke only, no mouse/keyboard input) |
-| `pc/hover_test.ps1` | PC | hover levels (plain / Alt / Shift) on the real functions, no window or input |
+| `pc/ui_test.ps1`, `pc/run_ui_test.ps1` | PC | session-1 UI test (UI Automation only, no mouse/keyboard input) |
+| `pc/hover_test.ps1` | PC | hover levels and moving between words, on the real functions, no window or input |
+| `pc/config_test.ps1` | PC | config defaults, plain-text key migration, server and key checks |
 
 ## Setup
 
@@ -37,34 +46,44 @@ ln -s ~/.local/share/jpsnap/server/jp-translate ~/.local/bin/jp-translate
 echo "command=\"$HOME/.local/bin/jp-translate\",restrict $(cat jpsnap_key.pub)" >> ~/.ssh/authorized_keys
 ```
 
-**PC** (Windows 11, Python 3.11 via `py`): copy `pc/*` to `%LOCALAPPDATA%\JpSnap`, the core files
-(`jpsnap_core.py schema.json prompt.txt accents.txt`) to `%LOCALAPPDATA%\JpSnap\core`, the private key to
-`jpsnap_key` and the server host key to `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then run
+**PC** (Windows 11, Python 3.11 via `py`): copy `pc\*` (with `lib` and `ui`) to `%LOCALAPPDATA%\JpSnap`, the core files
+(`jpsnap_core.py schema.json prompt.txt prompt_fast.txt accents.txt`) to `%LOCALAPPDATA%\JpSnap\core`, the private key
+to `jpsnap_key` and the server host key to `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then run
 `powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\install.ps1`.
+The first snip opens the settings until a server is set.
 
 ## Settings
 
-⚙ opens `%LOCALAPPDATA%\JpSnap\config.json` (created on first run; applies to the next snip):
+⚙ opens the settings window; it writes `%LOCALAPPDATA%\JpSnap\config.json`:
 
 ```json
-{ "run_on": "server", "server": "user@your-server", "openai_api_key": "" }
+{ "run_on": "server", "server": "user@your-server", "fast": true, "voice": "nanami", "speed": "normal", "openai_api_key_dpapi": "" }
 ```
 
-- `server`: `user@host` of the machine with `server/jp-translate` (first run opens the settings until it is set).
 - `run_on`: `server` = translate and speak on the server over ssh; `pc` = everything on the PC
-  (needs `openai_api_key` or a one-time `codex login`; the Codex desktop app login is not usable by its CLI).
-- `openai_api_key` (optional, `sk-...`): passed to codex as `CODEX_API_KEY` for that run only, never stored on the server.
-  On the PC it sits in plain text in `config.json`.
+  (needs an API key or a one-time `codex login`; the Codex desktop app login is not usable by its CLI).
+- `server`: `user@host` of the machine with `server/jp-translate`.
+- `fast`: quick and full lookup start together (two requests per snip); the quick result is drawn first.
+- API key (optional, `sk-...`): stored DPAPI-encrypted for your Windows account (`openai_api_key_dpapi`); a plain
+  `openai_api_key` from older versions is encrypted and removed on first start. Each run passes it to codex as
+  `CODEX_API_KEY`; it is never stored on the server.
 
 ## Checks
 
 ```bash
-~/.local/share/jpsnap-venv/bin/python -I jpsnap_core.py selftest          # pitch logic
-powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode server   # on the PC
+~/.local/share/jpsnap-venv/bin/python -I jpsnap_core.py selftest          # pitch logic, request parsing
+# on the PC:
+powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode server        # fast mode
+powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode server -Full  # fast mode off
+powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\hover_test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\config_test.ps1
 ```
 
-The UI test feeds a rendered sentence through the real snip path and checks translation, words, karaoke, save, close
-and temp-file cleanup. `hover_test.ps1` checks what plain, Alt and Shift hover select and show. Real hovering and right-click are checked by hand.
+The UI test feeds a rendered sentence through the real snip path and checks translation, details, words, voice prefetch,
+karaoke, save, settings (bad server refused, saved values, encrypted key), close and temp-file cleanup. It runs the app
+with its own config copy and data folder (`JPSNAP_CONFIG`, `JPSNAP_DATA`) and only drives and closes the JpSnap
+process it started, so your settings, deck and history are not touched. `JPSNAP_DEBUG=<file>` traces lookups and
+playback. Real hovering and right-click are checked by hand.
 
 ## Security
 
@@ -73,7 +92,10 @@ and temp-file cleanup. `hover_test.ps1` checks what plain, Alt and Shift hover s
   can only answer; it cannot read files or reach the network. Check: ask it to run a command, it fails closed.
 - Model output is shown as plain text (never parsed as XAML) and HTML-escaped before it goes into `deck.tsv`.
 - The PC's ssh key is locked to `jp-translate` with `command=...,restrict` (no shell, no forwarding); the ssh
-  command only picks `translate` or `tts`. The API key is checked against `sk-[A-Za-z0-9_-]+`, sent on stdin and
-  given to codex in its environment for that run only.
+  command only picks `translate` or `tts`. Everything on stdin is checked in `jpsnap_core.py`
+  (`parse_translate_request`, `parse_tts_request`): JSON header, key format `sk-[A-Za-z0-9_-]`, PNG signature,
+  voice and rate from fixed lists.
+- The server setting must be `user@host` (no spaces or leading `-`) and ssh gets `--` before it, so it cannot become
+  an ssh option. The API key is encrypted with DPAPI and only decrypted for the request that needs it.
 
 Third-party data and services: see `THIRD_PARTY.md`.
