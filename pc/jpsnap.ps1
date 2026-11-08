@@ -2,7 +2,7 @@
 param([string]$TestImage)  # test hook: send this PNG and print the server's JSON, no UI
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms, System.Drawing
 # Started hidden by jpsnap.vbs: the first ShowWindow call takes that hidden flag, so spend it on the console, not the window.
-Add-Type -Namespace JpSnap -Name Win -MemberDefinition '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);'
+Add-Type -Namespace JpSnap -Name Win -MemberDefinition '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);'
 [void][JpSnap.Win]::ShowWindow([JpSnap.Win]::GetConsoleWindow(), 0)
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # config.json: run_on "server" (ssh to the server) or "pc" (everything on this PC), optional OpenAI API key.
@@ -129,7 +129,7 @@ function New-JpText([string]$text, [double]$size, [double]$opacity = 1) {
 $hoverBrush = New-JpBrush '#22FFFFFF'; $curBrush = New-JpBrush '#663D8BFD'; $clear = [Windows.Media.Brushes]::Transparent
 
 # State lives in one hashtable so event handlers can change it without scope prefixes.
-$st = @{ data = $null; blocks = @(); starts = @(); phraseOf = @(); phrases = @(); curFirst = -1; curLast = -1; curPhrase = -1; shownAt = 0; rate = 'normal'; audio = @{}; files = @(); jobs = @(); marks = $null; moved = $false }
+$st = @{ data = $null; blocks = @(); starts = @(); phraseOf = @(); phrases = @(); curFirst = -1; curLast = -1; curPhrase = -1; shownAt = 0; rate = 'normal'; audio = @{}; files = @(); jobs = @(); marks = $null; moved = $false; hover = -1; tipFor = -1; tipMode = 'token'; hoverRange = @(); wordOf = @(); partOf = @() }
 $player = New-Object Windows.Media.MediaPlayer
 
 # Pitch accent row: one cell per mora, line on top = high, line at the bottom = low, a vertical step where it changes.
@@ -170,15 +170,15 @@ function Show-JpNow([int]$first, [int]$last = $first) {
 function Get-JpTokenAt([int]$charIndex) {
     $k = 0; while ($k + 1 -lt $st.starts.Count -and $st.starts[$k + 1] -le $charIndex) { $k++ }; $k
 }
-function Start-JpClip($clip, [bool]$sentence, [int]$only) {
+function Start-JpClip($clip, [bool]$sentence, [int[]]$only) {
     $player.Stop(); $player.Open([uri]$clip.file); $player.Play()
     $st.marks = if ($sentence) { $clip.marks } else { $null }
     $st.curPhrase = -1
-    Show-JpNow $only
+    Show-JpNow $only[0] $only[-1]
 }
 # Speak text: a sentence highlights each word as it is spoken; a single word ($only) is shown in the "now" strip.
 # $play = $false only fetches the audio into the cache (kept until the window closes).
-function Start-JpSpeech([string]$text, [bool]$sentence, [int]$only = -1, [bool]$play = $true) {
+function Start-JpSpeech([string]$text, [bool]$sentence, [int[]]$only = -1, [bool]$play = $true) {
     $key = "$($st.rate)|$text"
     if ($st.audio.ContainsKey($key)) { if ($play) { Start-JpClip $st.audio[$key] $sentence $only }; return }
     $pending = @($st.jobs | Where-Object { $_.cacheKeys -contains $key })
@@ -187,7 +187,7 @@ function Start-JpSpeech([string]$text, [bool]$sentence, [int]$only = -1, [bool]$
 }
 # One tts call for several texts (every word of the snip at once); each clip is cached under "rate|text".
 # $play = the key to play when it arrives ('' = only fetch).
-function Start-JpTts([string[]]$texts, [string]$play = '', [bool]$sentence = $false, [int]$only = -1) {
+function Start-JpTts([string[]]$texts, [string]$play = '', [bool]$sentence = $false, [int[]]$only = -1) {
     $keys = @(); $todo = @()
     foreach ($x in $texts) {
         $k = "$($st.rate)|$x"
@@ -215,9 +215,51 @@ function Start-JpTts([string[]]$texts, [string]$play = '', [bool]$sentence = $fa
 }
 function Start-JpPrefetch {  # sentence and every word, in two parallel calls, so play and word clicks start at once
     Start-JpSpeech $st.data.sentence $true -1 $false
-    Start-JpTts @(foreach ($t in $st.data.tokens) { if ($t.pos -ne 'punctuation') { Get-JpWordText $t } })
+    Start-JpTts @(foreach ($t in $st.data.tokens) { if ($t.pos -ne 'punctuation') { Get-JpWordText $t } }; foreach ($g in @($st.data.words) + @($st.data.parts)) { Get-JpWordText $g })
 }
-function Get-JpWordText($t) { if ($t.reading) { $t.reading } else { $t.surface } }
+function Get-JpWordText($t) { if ($t.reading) { $t.reading } elseif ($t.surface) { $t.surface } else { $t.text } }
+# Hover level: plain = the token, Alt = the whole word it belongs to, Shift = its part of the sentence.
+function Get-JpSel([int]$k, [string]$mode) {
+    $g = if ($mode -eq 'word') { $st.wordOf[$k] } elseif ($mode -eq 'part') { $st.partOf[$k] }
+    if ($g) { @{ first = [int]$g.first; last = [int]$g.last; g = $g } } else { @{ first = $k; last = $k; g = $null } }
+}
+function New-JpGroupTip($g, [string]$mode) {
+    $tp = New-Object Windows.Controls.StackPanel; $tp.MaxWidth = 380
+    $h = New-JpText "$($g.text)   $($g.reading)" 17; $h.FontWeight = 'SemiBold'
+    $pieces = ($st.data.tokens[$g.first..$g.last] | Where-Object { $_.pos -ne 'punctuation' } | ForEach-Object { $_.surface }) -join ' + '
+    $p = New-JpText $(if ($mode -eq 'word') { "whole word  ·  $pieces" } else { "$($g.role)  ·  $pieces" }) 12.5 0.8
+    $m = New-JpText $g.meaning 14.5
+    $e = New-JpText $g.explanation 12.5 0.85; $e.Margin = '0,4,0,0'
+    foreach ($x in $h, $p, $m, $e) { $tp.Children.Add($x) | Out-Null }
+    $tp
+}
+function New-JpTokenTip([int]$k) {
+    $t = $st.data.tokens[$k]; $punct = $t.pos -eq 'punctuation'
+    $tp = New-Object Windows.Controls.StackPanel; $tp.MaxWidth = 360
+    $h = New-JpText $(if ($punct) { $t.surface } else { "$($t.surface)   $($t.reading) · $($t.romaji)" }) 17; $h.FontWeight = 'SemiBold'
+    $p = New-JpText $(if ($punct) { 'punctuation' } else { "$($t.pos)  ·  $($t.role)" }) 12.5; $p.Foreground = $(if ($punct) { New-JpBrush '#B0BEC5' } else { New-JpBrush $(if ($posColor.ContainsKey($t.pos)) { $posColor[$t.pos] } else { '#B0BEC5' }) })
+    $m = New-JpText $t.meaning 14.5
+    $e = New-JpText $t.explanation 12.5 0.85; $e.Margin = '0,4,0,0'
+    $acc = if ($t.pitch_src -eq 'dict' -and $null -ne $t.accent) {
+        $n = [int]$t.accent; $mc = @($t.morae).Count
+        $kind = if ($n -eq 0) { 'heiban: low start, stays high' } elseif ($n -eq 1) { 'atamadaka: high start, drops after the 1st mora' } elseif ($n -ge $mc) { 'odaka: rises, drops on the next particle' } else { "nakadaka: drops after mora $n" }
+        "Pitch [$n] $kind ($($t.pitch), dictionary)"
+    } elseif ($t.pitch) { "Pitch $($t.pitch) (AI estimate)" } else { '' }
+    $pa = New-JpText $acc 11.5 0.65; $pa.Margin = '0,4,0,0'
+    $hint = New-JpText $(if ($st.wordOf[$k]) { 'Alt: whole word · Shift: part of the sentence' } else { 'Shift: part of the sentence' }) 10.5 0.5; $hint.Margin = '0,6,0,0'
+    foreach ($x in $h, $p, $m, $e, $pa, $hint) { $tp.Children.Add($x) | Out-Null }
+    $tp
+}
+# Highlight the hovered selection and point its tooltip at it; the timer calls this when Alt/Shift change.
+function Set-JpHover([int]$k, [string]$mode) {
+    foreach ($i in $st.hoverRange) { if (-not (Test-JpCur $i)) { $st.blocks[$i].Background = $clear } }
+    $st.hoverRange = @(); $st.tipFor = $k; $st.tipMode = $mode
+    if ($k -lt 0) { return }
+    $sel = Get-JpSel $k $mode
+    $st.hoverRange = @($sel.first..$sel.last)
+    foreach ($i in $st.hoverRange) { if (-not (Test-JpCur $i)) { $st.blocks[$i].Background = $hoverBrush } }
+    if ($st.blocks[$k].ToolTip) { $st.blocks[$k].ToolTip.Content = $(if ($sel.g) { New-JpGroupTip $sel.g $mode } else { New-JpTokenTip $k }) }
+}
 function Save-JpWords($tokens) {
     [void](New-Item -ItemType Directory -Force $data)
     $deck = Join-Path $data 'deck.tsv'
@@ -244,6 +286,9 @@ function Show-JpResult($r) {
     [IO.File]::AppendAllText((Join-Path $data 'history.jsonl'), ('{"time":"' + (Get-Date -Format s) + '","result":' + ($r.Text -replace '\r?\n', '') + "}`n"), $utf8)
     $ui.translation.Text = $d.translation
     foreach ($g in $d.grammar) { $ui.grammar.Children.Add((New-JpText "• $g" 12.5 0.8)) | Out-Null }
+    $st.wordOf = New-Object object[] $d.tokens.Count; $st.partOf = New-Object object[] $d.tokens.Count  # token -> its word / part
+    foreach ($g in $d.words) { for ($i = [int]$g.first; $i -le [int]$g.last; $i++) { if (-not $st.wordOf[$i]) { $st.wordOf[$i] = $g } } }
+    foreach ($g in $d.parts) { for ($i = [int]$g.first; $i -le [int]$g.last; $i++) { if (-not $st.partOf[$i]) { $st.partOf[$i] = $g } } }
     $pos = 0; $starts = @(); $blocks = @(); $seen = @()
     for ($k = 0; $k -lt $d.tokens.Count; $k++) {
         $t = $d.tokens[$k]; $starts += $pos; $pos += $t.surface.Length
@@ -263,26 +308,14 @@ function Show-JpResult($r) {
             if (-not $punct -and $seen -notcontains $t.pos) { $seen += $t.pos }
             $tt = New-Object Windows.Controls.ToolTip
             $tt.Background = New-JpBrush '#F5242428'; $tt.Foreground = New-JpBrush '#F0F0F0'; $tt.BorderBrush = $color; $tt.Padding = '10,8'
-            $tp = New-Object Windows.Controls.StackPanel; $tp.MaxWidth = 360
-            $h = New-JpText $(if ($punct) { $t.surface } else { "$($t.surface)   $($t.reading) · $($t.romaji)" }) 17; $h.FontWeight = 'SemiBold'
-            $p = New-JpText $(if ($punct) { 'punctuation' } else { "$($t.pos)  ·  $($t.role)" }) 12.5; $p.Foreground = $(if ($punct) { New-JpBrush '#B0BEC5' } else { $color })
-            $m = New-JpText $t.meaning 14.5
-            $e = New-JpText $t.explanation 12.5 0.85; $e.Margin = '0,4,0,0'
-            $acc = if ($t.pitch_src -eq 'dict' -and $null -ne $t.accent) {
-                $n = [int]$t.accent; $mc = @($t.morae).Count
-                $kind = if ($n -eq 0) { 'heiban: low start, stays high' } elseif ($n -eq 1) { 'atamadaka: high start, drops after the 1st mora' } elseif ($n -ge $mc) { 'odaka: rises, drops on the next particle' } else { "nakadaka: drops after mora $n" }
-                "Pitch [$n] $kind ($($t.pitch), dictionary)"
-            } elseif ($t.pitch) { "Pitch $($t.pitch) (AI estimate)" } else { '' }
-            $pa = New-JpText $acc 11.5 0.65; $pa.Margin = '0,4,0,0'
-            foreach ($x in $h, $p, $m, $e, $pa) { $tp.Children.Add($x) | Out-Null }
-            $tt.Content = $tp; $b.ToolTip = $tt
+            $tt.Content = New-JpTokenTip $k; $b.ToolTip = $tt
             [Windows.Controls.ToolTipService]::SetInitialShowDelay($b, 120); [Windows.Controls.ToolTipService]::SetShowDuration($b, 60000)
-            $b.Add_MouseEnter({ param($s, $e) if (-not (Test-JpCur $s.Tag)) { $s.Background = $hoverBrush } })
-            $b.Add_MouseLeave({ param($s, $e) if (-not (Test-JpCur $s.Tag)) { $s.Background = $clear } })
+            $b.Add_MouseEnter({ param($s, $e) $st.hover = $s.Tag; Set-JpHover $s.Tag $st.tipMode })
+            $b.Add_MouseLeave({ param($s, $e) $st.hover = -1; Set-JpHover -1 'token' })
             if (-not $punct) {
             $b.Cursor = 'Hand'
             $b.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true })  # a click on a word is not a window drag
-            $b.Add_MouseLeftButtonUp({ param($s, $e) Start-JpSpeech (Get-JpWordText $st.data.tokens[$s.Tag]) $false $s.Tag })
+            $b.Add_MouseLeftButtonUp({ param($s, $e) $sel = Get-JpSel $s.Tag $st.tipMode; Start-JpSpeech (Get-JpWordText $(if ($sel.g) { $sel.g } else { $st.data.tokens[$s.Tag] })) $false @($sel.first, $sel.last) })
             $b.Add_MouseRightButtonUp({ param($s, $e) Save-JpWords @($st.data.tokens[$s.Tag]) })
             }
         }
@@ -303,7 +336,7 @@ function Show-JpResult($r) {
         $ui.legend.Children.Add($lg) | Out-Null
     }
     if ($seen) { $ui.legend.Children.Add((New-JpText 'pitch: line on top = high, at the bottom = low (faint = AI estimate)' 11)) | Out-Null }
-    $st.hint = if ($d.tokens.Count) { 'Hover: meaning · click: listen · right-click: save' } else { '' }
+    $st.hint = if ($d.tokens.Count) { 'Hover: meaning (+Alt: whole word, +Shift: sentence part) · click: listen · right-click: save' } else { '' }
     $ui.status.Text = $st.hint
     $ui.play.IsEnabled = $d.tokens.Count -gt 0; $ui.save.IsEnabled = $d.tokens.Count -gt 0
     if ($d.tokens.Count) { Start-JpPrefetch }
@@ -311,6 +344,10 @@ function Show-JpResult($r) {
 
 $timer = New-Object Windows.Threading.DispatcherTimer; $timer.Interval = [TimeSpan]::FromMilliseconds(40)
 $timer.Add_Tick({
+    if ($st.hover -ge 0) {  # Alt/Shift are read from the keyboard state, so they work even when the overlay has no focus
+        $mode = if ([JpSnap.Win]::GetAsyncKeyState(0x12) -lt 0) { 'word' } elseif ([JpSnap.Win]::GetAsyncKeyState(0x10) -lt 0) { 'part' } else { 'token' }
+        if ($mode -ne $st.tipMode -or $st.hover -ne $st.tipFor) { Set-JpHover $st.hover $mode }
+    }
     foreach ($j in @($st.jobs)) { if ($j.job.P.HasExited) { $st.jobs = @($st.jobs | Where-Object { $_ -ne $j }); & $j.done (Read-JpSsh $j.job) $j } }
     if ($st.marks) {  # karaoke: highlight the phrase being spoken, each shown at least 350 ms (it catches up after)
         $ms0 = $player.Position.TotalMilliseconds; $k = -1
@@ -332,6 +369,9 @@ $ui.speed.Add_Click({
 $ui.settings.Add_Click({ Start-Process notepad.exe "`"$cfgFile`"" })  # takes effect on the next snip
 $ui.save.Add_Click({ Save-JpWords $st.data.tokens })
 $ui.close.Add_Click({ $win.Close() })
+# A lone Alt press would put the window into menu mode and eat the next key.
+$win.Add_PreviewKeyDown({ param($s, $e) if ($e.Key -eq 'System' -and $e.SystemKey -in 'LeftAlt', 'RightAlt') { $e.Handled = $true } })
+$win.Add_PreviewKeyUp({ param($s, $e) if ($e.Key -eq 'System' -and $e.SystemKey -in 'LeftAlt', 'RightAlt') { $e.Handled = $true } })
 $win.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $win.Close() } elseif ($e.Key -eq 'Space' -and $ui.play.IsEnabled) { Start-JpSpeech $st.data.sentence $true } })
 $ui.root.Add_MouseLeftButtonDown({ $st.moved = $true; $win.DragMove() })
 

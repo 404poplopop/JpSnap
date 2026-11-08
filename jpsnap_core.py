@@ -64,6 +64,15 @@ def enrich(data, acc):
             pitch, src = ai, "ai"  # the model sometimes writes "き=L の=H": keep only the H/L marks
         t["pitch"], t["pitch_src"] = pitch, src
         prev = t
+    toks = data.get("tokens", [])
+    for name, min_len in (("words", 2), ("parts", 1)):  # token ranges from the model: keep only valid ones
+        ok = []
+        for g in data.get(name, []):
+            f, l = g.get("first"), g.get("last")
+            if isinstance(f, int) and isinstance(l, int) and 0 <= f and f + min_len - 1 <= l < len(toks):
+                g["text"] = "".join(t["surface"] for t in toks[f:l + 1])
+                ok.append(g)
+        data[name] = ok
     return data
 
 def translate():
@@ -133,6 +142,10 @@ def selftest():
         {"surface": "食べた", "reading": "たべた", "pos": "verb", "pitch": "た=L べ=H た=L"},
         {"surface": "ぴよぽ", "reading": "ぴよぽ", "pos": "noun", "pitch": "ぴ=L よ=H"},
     ]}, acc)
+    g = enrich({"tokens": [{"surface": s, "reading": "", "pos": "noun", "pitch": ""} for s in ("8", "杯", "を")],
+                "words": [{"first": 0, "last": 1, "text": "x"}, {"first": 2, "last": 2}, {"first": 1, "last": 5}, {"first": "0", "last": 1}],
+                "parts": [{"first": 0, "last": 2}, {"first": -1, "last": 0}]}, acc)
+    assert [w["text"] for w in g["words"]] == ["8杯"] and [p["text"] for p in g["parts"]] == ["8杯を"], g
     got = [(t["pitch"], t["pitch_src"]) for t in d["tokens"]]
     want = [("LHL", "dict"), ("LHHH", "dict"), ("H", "dict"), ("HLLL", "dict"), ("LHHHL", "ai"), ("", ""), ("LHL", "ai"), ("", "")]
     assert got == want, got

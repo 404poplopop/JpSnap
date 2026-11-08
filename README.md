@@ -3,7 +3,8 @@
 Press **Ctrl+Alt+J**, drag over Japanese text anywhere on screen, and a small overlay breaks it down for learning:
 
 - every word with its kana reading, pitch accent line (top = high, bottom = low), part-of-speech colored underline and romaji
-- hover a word (or a punctuation mark) for its meaning, role in the sentence, how the form is built and why, and its pitch type
+- hover a word (or a punctuation mark) for its meaning, role in the sentence, how the form is built and why (including sound changes such as 8杯 = はっぱい), and its pitch type;
+  hold **Alt** for the whole word (8 + 杯), **Shift** for its part of the sentence, each with how its pieces stack together; click plays what is selected
 - click a word to hear it, ▶ / Space to hear the sentence with phrase-by-phrase karaoke, *Slow* for slower speech
 - right-click a word or press ★ to save it to `Documents\JpSnap\deck.tsv` (Anki import); every snip goes to `history.jsonl`
 - drag to move, Esc / ✕ to close
@@ -23,6 +24,7 @@ The voice is edge-tts `ja-JP-NanamiNeural` with word timings.
 | `pc/hotkey.ps1` | PC | resident Ctrl+Alt+J listener (Startup folder) |
 | `pc/install.ps1` | PC | Start Menu entry, Startup listener, venv with edge-tts, selftest |
 | `pc/ui_test.ps1`, `pc/run_ui_test.ps1` | PC | session-1 UI test (UI Automation Invoke only, no mouse/keyboard input) |
+| `pc/hover_test.ps1` | PC | hover levels (plain / Alt / Shift) on the real functions, no window or input |
 
 ## Setup
 
@@ -62,7 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui
 ```
 
 The UI test feeds a rendered sentence through the real snip path and checks translation, words, karaoke, save, close
-and temp-file cleanup. Hover tooltips and right-click are checked by hand.
+and temp-file cleanup. `hover_test.ps1` checks what plain, Alt and Shift hover select and show. Real hovering and right-click are checked by hand.
 
 ## Security
 
