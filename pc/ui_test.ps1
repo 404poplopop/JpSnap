@@ -89,11 +89,18 @@ try {
         $fastEl = Find-JpEl $sw2 'fast'; $fastBefore = $fastEl.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On'
         $fastEl.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
         (Find-JpEl $sw2 'voiceKeita').GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        $tierEl = Find-JpEl $sw2 'fastTier'; $tierBefore = $tierEl.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On'
+        $tierEl.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+        $modelEl = Find-JpEl $sw2 'model'; $modelEl.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand(); Start-Sleep -Milliseconds 300
+        $sol = $modelEl.FindFirst('Descendants', (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'gpt-6-sol')))
+        if ($sol) { $sol.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+        $modelEl.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
         $keySet = $true; try { Set-JpValue (Find-JpEl $sw2 'apiKey') 'sk-uitest1234567890' } catch { $keySet = $false }
         Invoke-JpEl (Find-JpEl $sw2 'saveSettings')
         $closed = $false; for ($i = 0; $i -lt 20 -and -not $closed; $i++) { Start-Sleep -Milliseconds 250; $closed = -not (Get-JpTopWindow 'JpSnap settings') }
         $raw = [IO.File]::ReadAllText($cfgFile); $c = $raw | ConvertFrom-Json
         $log += "SETTINGS_SAVE=" + $(if ($closed -and $c.voice -eq 'keita' -and [bool]$c.fast -ne $fastBefore -and $c.server -eq $origServer) { 'PASS' } else { "FAIL (closed $closed, $raw)" })
+        $log += "SETTINGS_MODEL_TIER=" + $(if ($c.model -eq 'gpt-6-sol' -and $c.fast_tier -eq (-not $tierBefore)) { 'PASS' } else { "FAIL (model $($c.model), tier $($c.fast_tier))" })
         $log += "KEY_ENCRYPTED=" + $(if (-not $keySet) { 'SKIP (no UIA value on the password box)' } elseif ($c.openai_api_key_dpapi -and $raw -notmatch 'sk-uitest') { 'PASS' } else { 'FAIL' })
     } else { $log += 'SETTINGS_VALIDATE=FAIL (no settings window)' }
     $cl = if ($win) { Find-JpEl $win 'close' }

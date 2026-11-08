@@ -1,5 +1,6 @@
 # JpSnap core. The same file runs on the server (ssh forced command) and on the PC ("run_on": "pc").
-#   translate: stdin = line 1 JSON {"key": optional OpenAI API key, "fast": bool}, then a base64 PNG
+#   translate: stdin = line 1 JSON {"key": optional OpenAI API key, "fast": bool, "model": one of MODELS,
+#              "priority": bool (Codex fast service tier)}, then a base64 PNG
 #              -> JSON breakdown: tokens with pitch accent, words, parts, grammar (fast: tokens and translation only)
 #   tts:       stdin = base64 JSON {"texts": [...], "rate": "normal" | "slow", "voice": "nanami" | "keita"}
 #              -> JSON {"items": [{"audio": base64 mp3, "marks": [{"t" ms, "d" ms, "text"}]}]}
@@ -9,7 +10,8 @@
 import asyncio, base64, binascii, json, os, re, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL = "gpt-6-luna"
+# Codex models that take images; the PC picks one in settings, anything else is refused. Luna is the quick, cheap one.
+MODELS = ("gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
 RATES = {"slow": "-35%", "normal": "-5%"}
 VOICES = {"nanami": "ja-JP-NanamiNeural", "keita": "ja-JP-KeitaNeural"}
 FAST_TOKEN_FIELDS = ("surface", "reading", "romaji", "pos", "meaning", "pitch")
@@ -31,7 +33,8 @@ def fail(msg):
 # ---------- requests (trust boundary: everything on stdin comes from the PC) ----------
 
 def parse_translate_request(raw):
-    """b'{"key": "", "fast": false}\\n<base64 png>' -> (key, fast, png bytes)"""
+    """b'{"key": "", "fast": false, "model": "gpt-6-luna", "priority": false}\\n<base64 png>'
+    -> (key, fast, model, priority, png bytes); older clients send only key and fast"""
     head, _, b64 = raw.partition(b"\n")
     try:
         opts = json.loads(head.decode("ascii")) if len(head) <= 4096 else None
@@ -40,17 +43,20 @@ def parse_translate_request(raw):
     if not isinstance(opts, dict):
         fail("Bad request header.")
     key, fast = opts.get("key", ""), opts.get("fast", False)
+    model, priority = opts.get("model", MODELS[0]), opts.get("priority", False)
     if not isinstance(key, str) or not API_KEY.fullmatch(key):
         fail("Bad API key format (expected sk-...).")
-    if not isinstance(fast, bool):
+    if not isinstance(fast, bool) or not isinstance(priority, bool):
         fail("Bad request header.")
+    if model not in MODELS:
+        fail("Unknown model.")
     try:
         png = base64.b64decode(b64)
     except (binascii.Error, ValueError):
         fail("Bad image data.")
     if not png.startswith(b"\x89PNG\r\n\x1a\n"):
         fail("Not a PNG image.")
-    return key, fast, png
+    return key, fast, model, priority, png
 
 
 def parse_tts_request(raw):
@@ -165,7 +171,7 @@ def schema(fast):
     return s
 
 
-def run_codex(png, key, fast):
+def run_codex(png, key, fast, model=MODELS[0], priority=False):
     env = dict(os.environ)
     if key:
         env["CODEX_API_KEY"] = key  # this run only; codex does not store it
@@ -178,7 +184,8 @@ def run_codex(png, key, fast):
         with open(os.path.join(HERE, "prompt_fast.txt" if fast else "prompt.txt"), "rb") as prompt:
             r = subprocess.run(
                 [os.environ.get("JPSNAP_CODEX", "codex"), "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only",
-                 "-m", MODEL, "-c", "model_reasoning_effort=low", *NO_TOOLS,
+                 "-m", model, "-c", "model_reasoning_effort=low", *NO_TOOLS,
+                 *(["-c", 'service_tier="priority"'] if priority else []),  # Codex "Fast": ~1.5x speed, more usage
                  "--output-schema", schema_file, "-o", out, "-i", shot],
                 stdin=prompt, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=d, env=env,
                 creationflags=0x08000000 if os.name == "nt" else 0)  # CREATE_NO_WINDOW
@@ -189,8 +196,8 @@ def run_codex(png, key, fast):
 
 
 def translate():
-    key, fast, png = parse_translate_request(sys.stdin.buffer.read(40_000_000))
-    print(json.dumps(enrich(run_codex(png, key, fast), load_accents())))
+    key, fast, model, priority, png = parse_translate_request(sys.stdin.buffer.read(40_000_000))
+    print(json.dumps(enrich(run_codex(png, key, fast, model, priority), load_accents())))
 
 
 # ---------- tts ----------
@@ -254,11 +261,14 @@ def selftest():
 
     png = b"\x89PNG\r\n\x1a\n...."
     ok = b'{"key": "sk-abcdefgh12", "fast": true}\n' + base64.b64encode(png)
-    assert parse_translate_request(ok) == ("sk-abcdefgh12", True, png)
-    assert parse_translate_request(b'{}\n' + base64.b64encode(png)) == ("", False, png)
+    assert parse_translate_request(ok) == ("sk-abcdefgh12", True, "gpt-6-luna", False, png)
+    assert parse_translate_request(b'{}\n' + base64.b64encode(png)) == ("", False, "gpt-6-luna", False, png)
+    picked = b'{"model": "gpt-6-sol", "priority": true}\n' + base64.b64encode(png)
+    assert parse_translate_request(picked) == ("", False, "gpt-6-sol", True, png)
     for bad in (b'sk-abc\n' + base64.b64encode(png), b'{"key": "sk-x y"}\n' + base64.b64encode(png),
                 b'{"key": "abc"}\n' + base64.b64encode(png), b'{"fast": "yes"}\n' + base64.b64encode(png),
-                b'[]\n' + base64.b64encode(png), b'{}\n' + base64.b64encode(b"GIF89a"), b"x" * 5000 + b"\n"):
+                b'[]\n' + base64.b64encode(png), b'{"model": "gpt-6-luna --x"}\n' + base64.b64encode(png),
+                b'{"model": ["gpt-6-luna"]}\n' + base64.b64encode(png), b'{"priority": 1}\n' + base64.b64encode(png), b'{}\n' + base64.b64encode(b"GIF89a"), b"x" * 5000 + b"\n"):
         assert rejects(parse_translate_request, bad), bad[:40]
 
     tts_req = base64.b64encode(json.dumps({"texts": "きのう", "rate": "slow", "voice": "keita"}).encode())

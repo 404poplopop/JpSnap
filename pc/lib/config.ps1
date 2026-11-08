@@ -1,13 +1,22 @@
 ﻿# Settings in config.json beside jpsnap.ps1. The OpenAI API key is stored DPAPI-encrypted for the current Windows
-# user (openai_api_key_dpapi); a plain openai_api_key from older versions is encrypted and removed on first read.
+# user (openai_api_key_dpapi), and so is the HTTPS token (https_token_dpapi); plain openai_api_key / https_token values
+# (older versions, or a token pasted into config.json) are encrypted and removed on first read.
 Add-Type -AssemblyName System.Security
 
-$JpDefaults = [ordered]@{ run_on = 'server'; server = ''; fast = $true; voice = 'nanami'; speed = 'normal'; openai_api_key_dpapi = '' }
-$JpChoices = @{ run_on = 'server', 'pc'; voice = 'nanami', 'keita'; speed = 'normal', 'slow' }
+$JpDefaults = [ordered]@{ run_on = 'server'; server = ''; https_url = ''; https_token_dpapi = ''; fast = $true; model = 'gpt-6-luna'; fast_tier = $false; voice = 'nanami'; speed = 'normal'; openai_api_key_dpapi = '' }
+# keep model in step with MODELS in jpsnap_core.py (the core refuses any other)
+$JpModels = 'gpt-6-luna', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'
+$JpChoices = @{ model = $JpModels; run_on = 'server', 'https', 'pc'; voice = 'nanami', 'keita'; speed = 'normal', 'slow' }
 
 # user@host only: no spaces, no leading '-', so the value can never turn into an ssh option.
 function Test-JpServer([string]$server) { $server -match '^[A-Za-z0-9_][A-Za-z0-9._-]{0,31}@[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z' }
 function Test-JpApiKey([string]$key) { $key -cmatch '^(sk-[A-Za-z0-9_-]{8,200})?\z' }
+# https://host[:port][/path]: no credentials, query or spaces; the token goes in a header, never in the URL
+function Test-JpHttpsUrl([string]$url) {
+    ($url -cmatch '^https://[A-Za-z0-9][A-Za-z0-9.-]{0,252}(:(?<port>[0-9]{1,5}))?(/[A-Za-z0-9._~/-]*)?\z') -and
+        (-not $Matches.port -or [int]$Matches.port -in 1..65535)
+}
+function Test-JpToken([string]$token) { $token -cmatch '^([A-Za-z0-9_-]{32,128})?\z' }
 
 function Protect-JpSecret([string]$plain) {
     if (-not $plain) { return '' }
@@ -28,11 +37,12 @@ function Read-JpConfig([string]$file) {
         $name = $prop.Name; $value = $prop.Value
         if (-not $cfg.Contains($name)) { continue }
         if ($JpChoices.ContainsKey($name) -and $value -notin $JpChoices[$name]) { continue }  # unknown value: keep the default
-        if ($name -eq 'fast' -and $value -isnot [bool]) { continue }  # [bool]'false' would be $true
+        if ($name -in 'fast', 'fast_tier' -and $value -isnot [bool]) { continue }  # [bool]'false' would be $true
         $cfg[$name] = $value
     }
-    if ($saved.openai_api_key) {  # migrate a plain-text key
-        if (Test-JpApiKey $saved.openai_api_key) { $cfg.openai_api_key_dpapi = Protect-JpSecret $saved.openai_api_key }
+    if ($saved.openai_api_key -or $saved.https_token) {  # migrate plain-text secrets
+        if ($saved.openai_api_key -and (Test-JpApiKey $saved.openai_api_key)) { $cfg.openai_api_key_dpapi = Protect-JpSecret $saved.openai_api_key }
+        if ($saved.https_token -and (Test-JpToken $saved.https_token)) { $cfg.https_token_dpapi = Protect-JpSecret $saved.https_token }
         Save-JpConfig $file $cfg
     }
     $cfg

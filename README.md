@@ -10,7 +10,7 @@ Press **Ctrl+Alt+J**, drag over Japanese text anywhere on screen, and a small ov
 - ⚡ **fast mode** (default on): a quick translation with readings in about 10 s, the full explanations replace it when they arrive (about 25 s)
 - click a word to hear it, ▶ / Space to hear the sentence with phrase-by-phrase karaoke, **1× / 0.7×** for slower speech
 - right-click a word or press ★ to save it to `Documents\JpSnap\deck.tsv` (Anki import); every snip goes to `history.jsonl`
-- ⚙ settings: server or this PC, server address, optional API key, fast mode, voice (Nanami / Keita), speech speed
+- ⚙ settings: server (ssh or HTTPS) or this PC, server address, optional API key, fast mode, model, Codex fast tier, voice (Nanami / Keita), speech speed
 - drag to move, Esc / ✕ to close
 
 ## Quick start (Windows 10/11)
@@ -35,9 +35,10 @@ The voice is edge-tts (`ja-JP-NanamiNeural` or `ja-JP-KeitaNeural`) with word ti
 | `jpsnap_core.py` | server and PC | `translate` (codex + pitch enrichment), `tts` (edge-tts + word marks), `selftest` |
 | `schema.json`, `prompt.txt`, `prompt_fast.txt`, `accents.txt` | server and PC | output schema (the fast one is cut from it), prompts, pitch dictionary |
 | `server/jp-translate` | server | ssh forced command; dispatches to `jpsnap_core.py` |
+| `server/jp-https`, `server/jpsnap-https.service` | server | HTTPS front for networks that block ssh (same bodies over POST), its systemd unit template |
 | `pc/jpsnap.ps1` | PC | entry: snip (native `ms-screenclip:`), overlay, lookup flow, events |
 | `pc/lib/config.ps1` | PC | `config.json`, input checks, DPAPI-encrypted API key |
-| `pc/lib/backend.ps1` | PC | runs the core over ssh or locally, background jobs |
+| `pc/lib/backend.ps1` | PC | runs the core over ssh, HTTPS or locally, background jobs |
 | `pc/lib/render.ps1` | PC | word blocks, pitch lines, tooltips, Alt/Shift hover, "now" strip |
 | `pc/lib/speech.ps1` | PC | voice cache, prefetch, karaoke |
 | `pc/lib/deck.ps1`, `pc/lib/settings.ps1` | PC | history and Anki deck; settings window |
@@ -63,6 +64,20 @@ echo "command=\"$HOME/.local/bin/jp-translate\",restrict $(cat jpsnap_key.pub)" 
 server host key in `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then choose *Server* in ⚙ settings.
 `setup.bat -AutoStart Yes|No|Keep` answers the start-with-Windows question without asking.
 
+**HTTPS (when ssh is blocked, e.g. on a corp VPN)**: `server/jp-https` listens on 127.0.0.1:8893 and runs the same
+core; your TLS reverse proxy (nginx, Caddy, Cloudflare in front, ...) forwards `/jpsnap/` to it, for example nginx:
+```nginx
+location ^~ /jpsnap/ { client_max_body_size 30m; proxy_pass http://127.0.0.1:8893/; proxy_read_timeout 180s; }
+```
+```bash
+umask 077; mkdir -p ~/.config/jpsnap; python3 -c 'import secrets;print(secrets.token_urlsafe(32))' > ~/.config/jpsnap/https_token
+sed "s|__USER__|$USER|g; s|__HOME__|$HOME|g; s|__NODE_BIN__|$(dirname "$(command -v node)")|g" server/jpsnap-https.service |
+  sudo tee /etc/systemd/system/jpsnap-https.service >/dev/null && sudo systemctl enable --now jpsnap-https
+```
+Run it as the user whose Codex login and token file it should use.
+On the PC choose *Server (HTTPS)* in ⚙ settings, address `https://<site>/jpsnap`, and paste the token (stored
+DPAPI-encrypted). Errors from the core come back as HTTP 422 (Cloudflare and some proxies replace 502 bodies).
+
 ## Settings
 
 ⚙ opens the settings window; it writes `%LOCALAPPDATA%\JpSnap\config.json`:
@@ -71,9 +86,13 @@ server host key in `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then ch
 { "run_on": "server", "server": "user@your-server", "fast": true, "voice": "nanami", "speed": "normal", "openai_api_key_dpapi": "" }
 ```
 
-- `run_on`: `server` = translate and speak on the server over ssh; `pc` = everything on the PC
+- `run_on`: `server` = translate and speak on the server over ssh; `https` = the same over HTTPS; `pc` = everything on the PC
   (needs an API key or a one-time `codex login`; the Codex desktop app login is not usable by its CLI).
 - `server`: `user@host` of the machine with `server/jp-translate`.
+- `model`: the Codex model (`gpt-6-luna` default; the list is fixed in `MODELS`, the core refuses others).
+- `fast_tier`: Codex's priority service tier (`service_tier="priority"`): about 1.5× faster, uses more of your plan.
+- `https_url`, `https_token_dpapi`: `run_on: https` posts to `<https_url>/translate` and `/tts` with
+  `Authorization: Bearer <token>`; uses the Windows proxy settings. A plain `https_token` is encrypted on first start.
 - `fast`: quick and full lookup start together (two requests per snip); the quick result is drawn first.
 - API key (optional, `sk-...`): stored DPAPI-encrypted for your Windows account (`openai_api_key_dpapi`); a plain
   `openai_api_key` from older versions is encrypted and removed on first start. Each run passes it to codex as
@@ -83,8 +102,10 @@ server host key in `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then ch
 
 ```bash
 ~/.local/share/jpsnap-venv/bin/python -I jpsnap_core.py selftest          # pitch logic, request parsing
+~/.local/share/jpsnap-venv/bin/python -I server/jp-https selftest      # HTTPS front: token, routes, size limit
 # on the PC:
 powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode server        # fast mode
+powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode https         # over HTTPS
 powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\run_ui_test.ps1 -Mode server -Full  # fast mode off
 powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\hover_test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\config_test.ps1
@@ -108,6 +129,9 @@ playback. Real hovering and right-click are checked by hand.
   voice and rate from fixed lists.
 - `setup.bat` installs the voice runtime from `pc/requirements.txt`: exact versions with SHA-256 hashes, wheels only
   (`--require-hashes --only-binary=:all:`), so a changed or newly published package is refused and no build scripts run.
+- HTTPS front: every request needs the 256-bit bearer token (constant-time compare) before the body is read; bodies
+  over 30 MB are refused, at most 6 core runs at once (then 503), 170 s per run; it listens on 127.0.0.1 only.
+  A corp proxy that inspects TLS can read the requests (screenshots, token, API key): use your own API key there with care.
 - The server setting must be `user@host` (no spaces or leading `-`) and ssh gets `--` before it, so it cannot become
   an ssh option. The API key is encrypted with DPAPI and only decrypted for the request that needs it.
 
@@ -120,6 +144,9 @@ playback. Real hovering and right-click are checked by hand.
   hover popup instead of WPF tooltips. Review fixes: loading bar after a failed full lookup, config merge across
   windows, no cards from quick results, karaoke redraw after a re-render, keyboard keys and screen-reader names.
   The repo was recreated afterwards to drop old commits; the PR page went with it.
+
+- 2026-11-08: HTTPS transport (`run_on: https`) for networks that block ssh; model choice and the Codex fast tier
+  in settings.
 
 ## License
 
