@@ -1,6 +1,6 @@
 # JpSnap core. Same file runs on the server (ssh forced command) and on the PC ("run_on": "pc").
 #   translate: stdin = line 1 optional OpenAI API key (empty = Codex login), then base64 PNG -> JSON breakdown with pitch accent
-#   tts:       stdin = base64 JSON {"text", "rate"} -> JSON {"audio": base64 mp3, "marks": [{"t" ms, "d" ms, "text"}]}
+#   tts:       stdin = base64 JSON {"texts": [...], "rate"} -> JSON {"items": [{"audio": base64 mp3, "marks": [{"t" ms, "d" ms, "text"}]}]}
 # Output is ASCII JSON so no console code page can mangle it. Needs schema.json, prompt.txt, accents.txt beside it.
 import base64, json, os, re, subprocess, sys, tempfile
 
@@ -99,21 +99,27 @@ def translate():
 def tts():
     import asyncio
     import edge_tts
-    req = json.loads(base64.b64decode(sys.stdin.read(20000)))
-    text = str(req["text"])[:2000]
+    req = json.loads(base64.b64decode(sys.stdin.read(1_000_000)))
+    texts = req.get("texts", [])
+    texts = [str(x)[:2000] for x in ([texts] if isinstance(texts, str) else texts)][:80]  # PowerShell may unwrap a 1-item list
+    rate = RATES.get(req.get("rate"), "-5%")
+
+    async def one(text, sem):
+        async with sem:
+            com = edge_tts.Communicate(text, "ja-JP-NanamiNeural", rate=rate, boundary="WordBoundary")
+            audio, marks = bytearray(), []
+            async for c in com.stream():
+                if c["type"] == "audio":
+                    audio += c["data"]
+                elif c["type"] == "WordBoundary":
+                    marks.append({"t": c["offset"] / 10000, "d": c["duration"] / 10000, "text": c["text"]})
+            return {"audio": base64.b64encode(bytes(audio)).decode(), "marks": marks}
 
     async def run():
-        com = edge_tts.Communicate(text, "ja-JP-NanamiNeural", rate=RATES.get(req.get("rate"), "-5%"), boundary="WordBoundary")
-        audio, marks = bytearray(), []
-        async for c in com.stream():
-            if c["type"] == "audio":
-                audio += c["data"]
-            elif c["type"] == "WordBoundary":
-                marks.append({"t": c["offset"] / 10000, "d": c["duration"] / 10000, "text": c["text"]})
-        return audio, marks
+        sem = asyncio.Semaphore(4)  # a few at a time: the read-aloud service throttles bursts
+        return await asyncio.gather(*(one(t, sem) for t in texts))
 
-    audio, marks = asyncio.run(run())
-    print(json.dumps({"audio": base64.b64encode(bytes(audio)).decode(), "marks": marks}))
+    print(json.dumps({"items": asyncio.run(run())}))
 
 def selftest():
     acc = load_accents()

@@ -32,6 +32,10 @@ try {
     $log += "TRANSLATION=" + $(if ($tr -match 'ramen') { "PASS ($([int]$sw.Elapsed.TotalSeconds) s)" } else { "FAIL '$tr'" })
     $w0 = if ($win) { Find-JpText $win '昨日' }; $w2 = if ($win) { Find-JpText $win '友達' }
     $log += "WORDS=" + $(if ($w0 -and $w2) { 'PASS' } else { 'FAIL' })
+    # sentence + every word (10 here) are fetched before any click
+    $nmp3 = 0
+    for ($i = 0; $i -lt 40 -and $nmp3 -lt 11; $i++) { Start-Sleep -Milliseconds 500; $nmp3 = @(Get-ChildItem $env:TEMP -Filter 'jpsnap_tts_*.mp3' | Where-Object { $_.LastWriteTime -gt $t0 }).Count }
+    $log += "PREFETCH=" + $(if ($nmp3 -ge 11) { 'PASS' } else { 'FAIL' }) + " ($nmp3 clips)"
     $r = $win.Current.BoundingRectangle; $shot = New-Object Drawing.Bitmap ([int]$r.Width + 40), ([int]$r.Height + 200)
     $gg = [Drawing.Graphics]::FromImage($shot); $gg.CopyFromScreen([int]$r.X - 10, [int]$r.Y - 10, 0, 0, $shot.Size); $gg.Dispose(); $shot.Save("$env:TEMP\jpsnap_shot.png")
     # play -> karaoke strip must walk through several words

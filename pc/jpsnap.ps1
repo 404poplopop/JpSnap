@@ -181,25 +181,43 @@ function Start-JpClip($clip, [bool]$sentence, [int]$only) {
 function Start-JpSpeech([string]$text, [bool]$sentence, [int]$only = -1, [bool]$play = $true) {
     $key = "$($st.rate)|$text"
     if ($st.audio.ContainsKey($key)) { if ($play) { Start-JpClip $st.audio[$key] $sentence $only }; return }
-    $pending = @($st.jobs | Where-Object { $_.key -eq $key })
-    if ($pending) { if ($play) { $pending[0].play = $true; $pending[0].sentence = $sentence; $pending[0].only = $only; $ui.status.Text = 'Loading voice...' }; return }
+    $pending = @($st.jobs | Where-Object { $_.cacheKeys -contains $key })
+    if ($pending) { if ($play) { $pending[0].play = $key; $pending[0].sentence = $sentence; $pending[0].only = $only; $ui.status.Text = 'Loading voice...' }; return }
+    Start-JpTts @($text) $(if ($play) { $key } else { '' }) $sentence $only
+}
+# One tts call for several texts (every word of the snip at once); each clip is cached under "rate|text".
+# $play = the key to play when it arrives ('' = only fetch).
+function Start-JpTts([string[]]$texts, [string]$play = '', [bool]$sentence = $false, [int]$only = -1) {
+    $keys = @(); $todo = @()
+    foreach ($x in $texts) {
+        $k = "$($st.rate)|$x"
+        if ($keys -notcontains $k -and -not $st.audio.ContainsKey($k) -and -not @($st.jobs | Where-Object { $_.cacheKeys -contains $k })) { $keys += $k; $todo += $x }
+    }
+    if (-not $todo) { return }
     if ($play) { $ui.status.Text = 'Loading voice...' }
-    $req = @{ text = $text; rate = $st.rate } | ConvertTo-Json -Compress
-    $st.jobs += @{ job = (Start-JpSsh 'tts' $utf8.GetBytes($req)); key = $key; sentence = $sentence; only = $only; play = $play; done = {
+    $req = @{ texts = $todo; rate = $st.rate } | ConvertTo-Json -Compress
+    $st.jobs += @{ job = (Start-JpSsh 'tts' $utf8.GetBytes($req)); cacheKeys = $keys; sentence = $sentence; only = $only; play = $play; done = {
         param($r, $ctx)
         if (-not $r.Ok) { if ($ctx.play) { $ui.status.Text = $r.Text }; return }
-        $j = $r.Text | ConvertFrom-Json
-        $file = Join-Path $env:TEMP ("jpsnap_tts_{0}_{1}.mp3" -f $PID, $st.files.Count)
-        [IO.File]::WriteAllBytes($file, [Convert]::FromBase64String($j.audio)); $st.files += $file
-        $pos = 0; $marks = @()
-        foreach ($m in $j.marks) {  # map each spoken word to the token it starts in
-            $i = $st.data.sentence.IndexOf([string]$m.text, $pos)
-            if ($i -ge 0) { $pos = $i + ([string]$m.text).Length; $marks += @{ t = [double]$m.t; tok = (Get-JpTokenAt $i) } }
+        $items = @(($r.Text | ConvertFrom-Json).items)
+        for ($n = 0; $n -lt $items.Count; $n++) {
+            $file = Join-Path $env:TEMP ("jpsnap_tts_{0}_{1}.mp3" -f $PID, $st.files.Count)
+            [IO.File]::WriteAllBytes($file, [Convert]::FromBase64String($items[$n].audio)); $st.files += $file
+            $pos = 0; $marks = @()
+            foreach ($m in $items[$n].marks) {  # map each spoken word to the token it starts in
+                $i = $st.data.sentence.IndexOf([string]$m.text, $pos)
+                if ($i -ge 0) { $pos = $i + ([string]$m.text).Length; $marks += @{ t = [double]$m.t; tok = (Get-JpTokenAt $i) } }
+            }
+            $st.audio[$ctx.cacheKeys[$n]] = @{ file = $file; marks = $marks }
         }
-        $clip = @{ file = $file; marks = $marks }; $st.audio[$ctx.key] = $clip
-        if ($ctx.play) { $ui.status.Text = $st.hint; Start-JpClip $clip $ctx.sentence $ctx.only }
+        if ($ctx.play -and $st.audio.ContainsKey($ctx.play)) { $ui.status.Text = $st.hint; Start-JpClip $st.audio[$ctx.play] $ctx.sentence $ctx.only }
     } }
 }
+function Start-JpPrefetch {  # sentence and every word, in two parallel calls, so play and word clicks start at once
+    Start-JpSpeech $st.data.sentence $true -1 $false
+    Start-JpTts @(foreach ($t in $st.data.tokens) { if ($t.pos -ne 'punctuation') { Get-JpWordText $t } })
+}
+function Get-JpWordText($t) { if ($t.reading) { $t.reading } else { $t.surface } }
 function Save-JpWords($tokens) {
     [void](New-Item -ItemType Directory -Force $data)
     $deck = Join-Path $data 'deck.tsv'
@@ -264,7 +282,7 @@ function Show-JpResult($r) {
             if (-not $punct) {
             $b.Cursor = 'Hand'
             $b.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true })  # a click on a word is not a window drag
-            $b.Add_MouseLeftButtonUp({ param($s, $e) $t = $st.data.tokens[$s.Tag]; Start-JpSpeech $(if ($t.reading) { $t.reading } else { $t.surface }) $false $s.Tag })
+            $b.Add_MouseLeftButtonUp({ param($s, $e) Start-JpSpeech (Get-JpWordText $st.data.tokens[$s.Tag]) $false $s.Tag })
             $b.Add_MouseRightButtonUp({ param($s, $e) Save-JpWords @($st.data.tokens[$s.Tag]) })
             }
         }
@@ -288,7 +306,7 @@ function Show-JpResult($r) {
     $st.hint = if ($d.tokens.Count) { 'Hover: meaning · click: listen · right-click: save' } else { '' }
     $ui.status.Text = $st.hint
     $ui.play.IsEnabled = $d.tokens.Count -gt 0; $ui.save.IsEnabled = $d.tokens.Count -gt 0
-    if ($d.tokens.Count) { Start-JpSpeech $d.sentence $true -1 $false }  # prefetch the voice
+    if ($d.tokens.Count) { Start-JpPrefetch }
 }
 
 $timer = New-Object Windows.Threading.DispatcherTimer; $timer.Interval = [TimeSpan]::FromMilliseconds(40)
@@ -309,7 +327,7 @@ $player.Add_MediaEnded({ $st.marks = $null; $st.curPhrase = -1; Show-JpNow -1 })
 $ui.play.Add_Click({ Start-JpSpeech $st.data.sentence $true })
 $ui.speed.Add_Click({
     $st.rate = if ($st.rate -eq 'slow') { 'normal' } else { 'slow' }; $ui.speed.Opacity = if ($st.rate -eq 'slow') { 1 } else { 0.5 }
-    if ($st.data -and $st.data.tokens.Count) { Start-JpSpeech $st.data.sentence $true -1 $false }  # prefetch this speed too
+    if ($st.data -and $st.data.tokens.Count) { Start-JpPrefetch }  # this speed too
 })
 $ui.settings.Add_Click({ Start-Process notepad.exe "`"$cfgFile`"" })  # takes effect on the next snip
 $ui.save.Add_Click({ Save-JpWords $st.data.tokens })
