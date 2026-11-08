@@ -46,7 +46,7 @@ $player = New-Object Windows.Media.MediaPlayer
 $st = @{
     data = $null; full = $false; busy = $true; jobs = @()
     blocks = @(); starts = @(); wordOf = @(); partOf = @(); phrases = @(); phraseOf = @()
-    hover = -1; tipFor = -1; tipMode = 'token'; hoverRange = @()
+    hover = -1; tipFor = -1; tipMode = 'token'; hoverRange = @(); tip = $null
     curFirst = -1; curLast = -1; curPhrase = -1; shownAt = 0; marks = $null
     rate = $cfg.speed; audio = @{}; files = @()
     moved = $false; anchor = $null; area = $null; started = Get-Date
@@ -111,7 +111,7 @@ $win.Add_KeyDown({ param($s, $e)
     if ($e.Key -eq 'Escape') { $win.Close() }
     elseif ($e.Key -eq 'Space' -and $ui.play.IsEnabled) { Start-JpSpeech $st.data.sentence $true }
 })
-$ui.root.Add_MouseLeftButtonDown({ $st.moved = $true; $win.DragMove() })
+$ui.root.Add_MouseLeftButtonDown({ $st.moved = $true; Set-JpHover -1 'token'; $win.DragMove() })
 
 # Open next to where the selection ended (the cursor), in DIPs, and stay inside that screen's work area as it grows.
 $win.Add_Loaded({
@@ -132,7 +132,7 @@ $win.Add_SizeChanged({
     $win.Left = [Math]::Max($st.area.Left, [Math]::Min($st.anchor.X, $st.area.Right - $w))
     $win.Top = if ($st.anchor.Y + $h -gt $st.area.Bottom) { [Math]::Max($st.area.Top, $st.anchor.Y - $h) } else { $st.anchor.Y }
 })
-$win.Add_Closed({ $timer.Stop(); $player.Close(); Stop-JpJobs })
+$win.Add_Closed({ $timer.Stop(); $player.Close(); Stop-JpJobs; if ($st.tip) { $st.tip.IsOpen = $false } })
 [void]$win.ShowDialog()
 
 # MediaPlayer releases its file lock asynchronously: keep pumping messages until the cached audio can be deleted.

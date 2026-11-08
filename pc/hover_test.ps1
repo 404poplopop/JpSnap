@@ -7,9 +7,9 @@ function New-TestTok($s, $r) { [pscustomobject]@{ surface = $s; reading = $r; ro
 $w = [pscustomobject]@{ first = 0; last = 1; text = '8杯'; reading = 'はっぱい'; meaning = 'eight bowls'; explanation = 'はち + はい -> はっぱい' }
 $p = [pscustomobject]@{ first = 0; last = 2; text = '8杯食べた'; reading = 'はっぱいたべた'; role = 'quantity and predicate'; meaning = ''; explanation = '' }
 $st = @{ data = [pscustomobject]@{ tokens = @((New-TestTok '8' 'はっ'), (New-TestTok '杯' 'ぱい'), (New-TestTok '食べた' 'たべた')); words = @($w); parts = @($p) }
-         busy = $false; curFirst = -1; curLast = -1; hoverRange = @(); tipFor = -1; tipMode = 'token'; wordOf = @($w, $w, $null); partOf = @($p, $p, $p); blocks = @() }
-$st.blocks = @(foreach ($i in 0..2) { $b = New-Object Windows.Controls.Border; $b.Background = $clear; $b.ToolTip = New-Object Windows.Controls.ToolTip; $b })
-function Get-TestState { (@(foreach ($b in $st.blocks) { [int]($b.Background -eq $hoverBrush) }) -join '') + ' ' + $st.blocks[1].ToolTip.Content.Children[0].Text }
+         busy = $false; tip = $null; curFirst = -1; curLast = -1; hoverRange = @(); tipFor = -1; tipMode = 'token'; wordOf = @($w, $w, $null); partOf = @($p, $p, $p); blocks = @() }
+$st.blocks = @(foreach ($i in 0..2) { $b = New-Object Windows.Controls.Border; $b.Background = $clear; $b })
+function Get-TestState { (@(foreach ($b in $st.blocks) { [int]($b.Background -eq $hoverBrush) }) -join '') + ' ' + $st.tip.Child.Child.Children[0].Text }
 $out = @()
 foreach ($c in @(@('token', '010', '杯   ぱい'), @('word', '110', '8杯   はっぱい'), @('part', '111', '8杯食べた   はっぱいたべた'))) {
     Set-JpHover 1 $c[0]; $got = Get-TestState
@@ -29,8 +29,15 @@ foreach ($order in 'leave-first', 'enter-first') {
     if ($order -eq 'leave-first') { Send-TestMouse $st.blocks[0] $leave; Send-TestMouse $st.blocks[2] $enter }
     else { Send-TestMouse $st.blocks[2] $enter; Send-TestMouse $st.blocks[0] $leave }
     $lit = (@(foreach ($b in $st.blocks) { [int]($b.Background -eq $hoverBrush) }) -join '')
-    $head = $st.blocks[2].ToolTip.Content.Children[0].Text
-    $out += "MOVE_$($order.ToUpper().Replace('-', '_'))=" + $(if ($st.hover -eq 2 -and $lit -eq '001' -and $head.StartsWith('食べた')) { 'PASS' } else { "FAIL (hover $($st.hover), lit $lit, '$head')" })
+    $head = $st.tip.Child.Child.Children[0].Text
+    $onNew = $st.tip.IsOpen -and $st.tip.PlacementTarget -eq $st.blocks[2] -and $head.StartsWith('食べた')
+    $out += "MOVE_$($order.ToUpper().Replace('-', '_'))=" + $(if ($st.hover -eq 2 -and $lit -eq '001' -and $onNew) { 'PASS' } else { "FAIL (hover $($st.hover), lit $lit, open $($st.tip.IsOpen), '$head')" })
 }
-$out += 'TIP_BELOW_BLOCK=' + $(if ($st.blocks[0].ToolTip.Placement -eq 'Bottom' -and $st.blocks[0].ToolTip.PlacementTarget -eq $st.blocks[0]) { 'PASS' } else { 'FAIL' })
+$out += 'TIP_BELOW_BLOCK=' + $(if ($st.tip.Placement -eq 'Bottom' -and -not $st.tip.IsHitTestVisible) { 'PASS' } else { 'FAIL' })
+Send-TestMouse $st.blocks[2] $leave
+$out += 'TIP_CLOSES_ON_LEAVE=' + $(if (-not $st.tip.IsOpen -and $st.hover -eq -1) { 'PASS' } else { 'FAIL' })
+# a Leave that never arrives (the stuck case): the timer sees the word is no longer under the pointer and closes the tip
+Send-TestMouse $st.blocks[1] $enter
+Update-JpHover
+$out += 'LOST_LEAVE_RECOVERED=' + $(if (-not $st.tip.IsOpen -and $st.hover -eq -1) { 'PASS' } else { "FAIL (hover $($st.hover), open $($st.tip.IsOpen))" })
 $out -join "`r`n" | Out-File -Encoding utf8 "$env:TEMP\jpsnap_hover.txt"

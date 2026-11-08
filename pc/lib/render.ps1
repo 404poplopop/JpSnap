@@ -112,18 +112,35 @@ function New-JpTokenTip([int]$k) {
     $tip = New-JpStack @($head, $kind, (New-JpText $t.meaning 14.5), $why, $pitch, $keys); $tip.MaxWidth = 360
     $tip
 }
-# Highlight the hovered selection and point its tooltip at it; the UI timer calls this again when Alt/Shift change.
+# One popup for every word, opened, moved and closed only by Set-JpHover. WPF's own tooltips can stay stuck on an
+# earlier word (seen with stylus input), so the tip follows our hover state instead. It sits below the word and ignores the mouse.
+function Get-JpTipPopup {
+    if ($st.tip) { return $st.tip }
+    $box = New-Object Windows.Controls.Border
+    $box.Background = New-JpBrush '#F5242428'; $box.BorderThickness = 1; $box.CornerRadius = 6; $box.Padding = '10,8'
+    [Windows.Documents.TextElement]::SetForeground($box, (New-JpBrush '#F0F0F0'))
+    $st.tip = New-Object Windows.Controls.Primitives.Popup
+    $st.tip.Child = $box; $st.tip.Placement = 'Bottom'; $st.tip.AllowsTransparency = $true; $st.tip.IsHitTestVisible = $false
+    $st.tip
+}
+# Highlight the hovered selection and show its tip; the UI timer calls this again when Alt/Shift change.
 function Set-JpHover([int]$k, [string]$mode) {
     foreach ($i in $st.hoverRange) { if (-not (Test-JpCur $i)) { $st.blocks[$i].Background = $clear } }
     $st.hoverRange = @(); $st.tipFor = $k; $st.tipMode = $mode
-    if ($k -lt 0) { return }
+    $tip = Get-JpTipPopup
+    if ($k -lt 0) { $tip.IsOpen = $false; return }
     $sel = Get-JpSel $k $mode
     $st.hoverRange = @($sel.first..$sel.last)
     foreach ($i in $st.hoverRange) { if (-not (Test-JpCur $i)) { $st.blocks[$i].Background = $hoverBrush } }
-    if ($st.blocks[$k].ToolTip) { $st.blocks[$k].ToolTip.Content = $(if ($sel.g) { New-JpGroupTip $sel.g $mode } else { New-JpTokenTip $k }) }
+    $t = $st.data.tokens[$k]
+    $tip.Child.BorderBrush = $(if ($t.pos -eq 'punctuation') { New-JpBrush '#B0BEC5' } else { Get-JpPosBrush $t.pos })
+    $tip.Child.Child = $(if ($sel.g) { New-JpGroupTip $sel.g $mode } else { New-JpTokenTip $k })
+    if ($tip.PlacementTarget -ne $st.blocks[$k]) { $tip.IsOpen = $false; $tip.PlacementTarget = $st.blocks[$k] }  # reopen to move it
+    $tip.IsOpen = $true
 }
-function Update-JpHover {  # timer: follow Alt/Shift while the mouse rests on a word
+function Update-JpHover {  # timer: follow Alt/Shift while the pointer rests on a word, and drop a hover whose Leave got lost
     if ($st.hover -lt 0) { return }
+    if (-not $st.blocks[$st.hover].IsMouseOver) { $st.hover = -1; Set-JpHover -1 'token'; return }
     $mode = Get-JpHoverMode
     if ($mode -ne $st.tipMode -or $st.hover -ne $st.tipFor) { Set-JpHover $st.hover $mode }
 }
@@ -143,14 +160,7 @@ function New-JpWordBlock([int]$k) {
     [Windows.Automation.AutomationProperties]::SetAutomationId($b, "w$k")
     if ($punct -and -not $t.meaning) { return $b }
 
-    # punctuation gets a tooltip too: its name and why it is placed here
-    $tip = New-Object Windows.Controls.ToolTip
-    $tip.Background = New-JpBrush '#F5242428'; $tip.Foreground = New-JpBrush '#F0F0F0'; $tip.Padding = '10,8'
-    $tip.BorderBrush = $(if ($punct) { New-JpBrush '#B0BEC5' } else { Get-JpPosBrush $t.pos })
-    $tip.Content = New-JpTokenTip $k; $b.ToolTip = $tip
-    # below the whole block, not under the cursor: a tip under the cursor covers the next word and swallows its hover
-    $tip.Placement = 'Bottom'; $tip.PlacementTarget = $b
-    [Windows.Controls.ToolTipService]::SetInitialShowDelay($b, 120); [Windows.Controls.ToolTipService]::SetShowDuration($b, 60000)
+    # hover shows the tip popup (punctuation too: its name and why it is placed here)
     $b.Add_MouseEnter({ param($s, $e) $st.hover = $s.Tag; Set-JpHover $s.Tag (Get-JpHoverMode) })
     # Leave of the old word can arrive after Enter of the new one: only clear the hover if it is still this word's
     $b.Add_MouseLeave({ param($s, $e) if ($st.hover -eq $s.Tag) { $st.hover = -1; Set-JpHover -1 'token' } })
@@ -181,6 +191,7 @@ function Show-JpLegend {
 # Draw a reply (quick or full; a full one replaces the quick one in place).
 function Show-JpResult($d) {
     Show-JpNow -1
+    if ($st.data) { Set-JpHover -1 'token' }  # a redraw replaces the blocks the tip points at
     $st.data = $d; $st.hover = -1; $st.hoverRange = @(); $st.tipFor = -1
     $count = @($d.tokens).Count
     $st.wordOf = New-Object object[] $count; $st.partOf = New-Object object[] $count  # token -> its word / part
