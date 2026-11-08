@@ -13,5 +13,12 @@ $serverOk = (Test-JpServer 'me@192.0.2.10') -and -not (Test-JpServer '-oProxyCom
 $out += 'SERVER_CHECK=' + $(if ($serverOk) { 'PASS' } else { 'FAIL' })
 $keyOk = (Test-JpApiKey '') -and (Test-JpApiKey 'sk-abc_DEF-12345') -and -not (Test-JpApiKey 'sk-a b c d e f') -and -not (Test-JpApiKey "sk-abcdefgh`n")
 $out += 'KEY_CHECK=' + $(if ($keyOk) { 'PASS' } else { 'FAIL' })
+# two windows: this one changes speed while another already saved voice=nanami; both survive, no temp file left
+$cfg = Read-JpConfig $f
+$other = Read-JpConfig $f; $other.voice = 'nanami'; Save-JpConfig $f $other
+[void](Update-JpConfig $f @{ speed = 'slow' })
+$merged = [IO.File]::ReadAllText($f) | ConvertFrom-Json
+$noTmp = -not (Get-ChildItem (Split-Path $f) -Filter "$(Split-Path -Leaf $f).*.tmp")
+$out += 'MERGE_KEEPS_OTHER_WINDOW=' + $(if ($merged.voice -eq 'nanami' -and $merged.speed -eq 'slow' -and $merged.openai_api_key_dpapi -and $noTmp) { 'PASS' } else { 'FAIL' })
 Remove-Item $f
 $out -join "`r`n"

@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="JpSnap settings" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
         FontFamily="Yu Gothic UI" FontSize="13" Foreground="#F0F0F0">
@@ -44,10 +44,10 @@
         </StackPanel>
 
         <TextBlock Text="Server (user@host)" Style="{StaticResource Label}"/>
-        <TextBox x:Name="server"/>
+        <TextBox x:Name="server" AutomationProperties.Name="Server (user@host)"/>
 
         <TextBlock Text="OpenAI API key (optional)" Style="{StaticResource Label}"/>
-        <PasswordBox x:Name="apiKey"/>
+        <PasswordBox x:Name="apiKey" AutomationProperties.Name="OpenAI API key (optional)"/>
         <TextBlock x:Name="keyState" Style="{StaticResource Note}"/>
         <CheckBox x:Name="removeKey" Content="Remove the saved key" Margin="0,4,0,0" Visibility="Collapsed"/>
 

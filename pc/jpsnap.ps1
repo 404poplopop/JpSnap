@@ -44,7 +44,7 @@ $player = New-Object Windows.Media.MediaPlayer
 
 # All state in one hashtable, so event handlers can change it without scope prefixes.
 $st = @{
-    data = $null; full = $false; busy = $true; jobs = @()
+    data = $null; full = $false; fullDone = $false; busy = $true; jobs = @()
     blocks = @(); starts = @(); wordOf = @(); partOf = @(); phrases = @(); phraseOf = @()
     hover = -1; tipFor = -1; tipMode = 'token'; hoverRange = @(); tip = $null
     curFirst = -1; curLast = -1; curPhrase = -1; shownAt = 0; marks = $null
@@ -59,6 +59,7 @@ function Sync-JpHeader {
 }
 function Set-JpBusy([bool]$on, [string]$text = '') {
     $st.busy = $on; $ui.busy.Visibility = if ($on) { 'Visible' } else { 'Collapsed' }; $ui.status.Text = $text
+    $ui.save.IsEnabled = -not $on -and $st.data -and @($st.data.tokens).Count  # no cards from a quick result while details load
 }
 
 # Fast mode starts a quick and a full lookup together: the quick one is drawn first, the full one replaces it.
@@ -68,6 +69,7 @@ function Start-JpLookup {
     Add-JpJob (Start-JpTranslate $png $false) { param($r) Complete-JpLookup $r $false }
 }
 function Complete-JpLookup($r, [bool]$quick) {
+    if (-not $quick) { $st.fullDone = $true }  # finished, ok or not
     if ($quick -and $st.full) { return }  # the full answer came first
     if (-not $r.Ok) {
         if ($quick) { return }  # the full lookup is still running and reports its own errors
@@ -81,8 +83,10 @@ function Complete-JpLookup($r, [bool]$quick) {
     try { $d = $r.Text | ConvertFrom-Json } catch { Set-JpBusy $false 'Bad reply'; $ui.translation.Text = $r.Text; return }
     if (-not $quick) { $st.full = $true; Add-JpHistory $r.Text }
     Write-JpDebug "lookup quick=$quick sentence='$($d.sentence)'"
-    if ($quick) { Set-JpBusy $true 'Loading details…' } else { Set-JpBusy $false }
     Show-JpResult $d
+    if (-not $quick) { Set-JpBusy $false }
+    elseif ($st.fullDone) { Set-JpBusy $false 'Details failed (quick result shown)' }  # the full one failed first
+    else { Set-JpBusy $true 'Loading details…' }
     if (@($d.tokens).Count) { Start-JpPrefetch }
 }
 
@@ -91,25 +95,35 @@ $timer = New-Object Windows.Threading.DispatcherTimer; $timer.Interval = [TimeSp
 $timer.Add_Tick({ Update-JpHover; Complete-JpJobs; Update-JpKaraoke })
 $player.Add_MediaEnded({ $st.marks = $null; $st.curPhrase = -1; Show-JpNow -1 })
 
-$ui.play.Add_Click({ Write-JpDebug 'play click'; Start-JpSpeech $st.data.sentence $true })
-$ui.speed.Add_Click({ Set-JpSpeed $(if ($st.rate -eq 'slow') { 'normal' } else { 'slow' }) })
-$ui.fast.Add_Click({
-    $cfg.fast = [bool]$ui.fast.IsChecked; Save-JpConfig $cfgFile $cfg
+function Switch-JpFast {
+    $cfg.fast = -not $cfg.fast; [void](Update-JpConfig $cfgFile @{ fast = $cfg.fast }); Sync-JpHeader
     $ui.status.Text = if ($cfg.fast) { 'Fast mode on (next snip)' } else { 'Fast mode off (next snip)' }
-})
-$ui.settings.Add_Click({
+}
+function Open-JpSettings {
     if (-not (Show-JpSettings $win)) { return }
     $st.rate = $cfg.speed; Sync-JpHeader
     if ($st.data -and @($st.data.tokens).Count) { Start-JpPrefetch }  # voice or speed may have changed
-})
+}
+function Switch-JpSpeed { Set-JpSpeed $(if ($st.rate -eq 'slow') { 'normal' } else { 'slow' }) }
+
+$ui.play.Add_Click({ Write-JpDebug 'play click'; Start-JpSpeech $st.data.sentence $true })
+$ui.speed.Add_Click({ Switch-JpSpeed })
+$ui.fast.Add_Click({ Switch-JpFast })
+$ui.settings.Add_Click({ Open-JpSettings })
 $ui.save.Add_Click({ Save-JpWords $st.data.tokens })
 $ui.close.Add_Click({ $win.Close() })
 # A lone Alt press (used for whole-word hover) would put the window into menu mode and eat the next key.
 $win.Add_PreviewKeyDown({ param($s, $e) if ($e.Key -eq 'System' -and $e.SystemKey -in 'LeftAlt', 'RightAlt') { $e.Handled = $true } })
 $win.Add_PreviewKeyUp({ param($s, $e) if ($e.Key -eq 'System' -and $e.SystemKey -in 'LeftAlt', 'RightAlt') { $e.Handled = $true } })
+# Keys for every header button (the buttons take no focus, so Space always means "play").
 $win.Add_KeyDown({ param($s, $e)
+    $ctrl = [Windows.Input.Keyboard]::Modifiers -eq 'Control'
     if ($e.Key -eq 'Escape') { $win.Close() }
     elseif ($e.Key -eq 'Space' -and $ui.play.IsEnabled) { Start-JpSpeech $st.data.sentence $true }
+    elseif ($e.Key -eq 'F' -and -not $ctrl) { Switch-JpFast }
+    elseif ($e.Key -eq 'S' -and -not $ctrl) { Switch-JpSpeed }
+    elseif ($e.Key -eq 'S' -and $ctrl -and $ui.save.IsEnabled) { Save-JpWords $st.data.tokens }
+    elseif ($e.Key -eq 'OemComma' -and $ctrl) { Open-JpSettings }
 })
 $ui.root.Add_MouseLeftButtonDown({ $st.moved = $true; Set-JpHover -1 'token'; $win.DragMove() })
 

@@ -192,6 +192,8 @@ function Show-JpLegend {
 function Show-JpResult($d) {
     Show-JpNow -1
     if ($st.data) { Set-JpHover -1 'token' }  # a redraw replaces the blocks the tip points at
+    $st.curPhrase = -1  # karaoke redraws the current phrase on the new blocks at the next tick
+    foreach ($j in $st.jobs) { if ($j.ctx.play -and -not $j.ctx.sentence) { $j.ctx.only = @(-1) } }  # old token indexes: play, no highlight
     $st.data = $d; $st.hover = -1; $st.hoverRange = @(); $st.tipFor = -1
     $count = @($d.tokens).Count
     $st.wordOf = New-Object object[] $count; $st.partOf = New-Object object[] $count  # token -> its word / part
@@ -216,5 +218,5 @@ function Show-JpResult($d) {
     }
     Show-JpLegend
     $ui.hint.Visibility = $(if ($count) { 'Visible' } else { 'Collapsed' })
-    $ui.play.IsEnabled = $count -gt 0; $ui.save.IsEnabled = $count -gt 0
+    $ui.play.IsEnabled = $count -gt 0
 }

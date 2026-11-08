@@ -66,7 +66,7 @@ function Start-JpPrefetch {  # the sentence, then every word, word group and sen
 }
 
 function Set-JpSpeed([string]$rate) {
-    $st.rate = $rate; $cfg.speed = $rate; Save-JpConfig $cfgFile $cfg
+    $st.rate = $rate; $cfg.speed = $rate; [void](Update-JpConfig $cfgFile @{ speed = $rate })
     Sync-JpHeader
     if ($st.data -and @($st.data.tokens).Count) { Start-JpPrefetch }
 }

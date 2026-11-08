@@ -19,13 +19,14 @@ function Show-JpSettings($owner) {
                    elseif ($server -and -not (Test-JpServer $server)) { 'Server must look like user@host (or leave it empty).' }
                    elseif (-not (Test-JpApiKey $key)) { 'The API key must start with sk- and contain only letters, digits, - and _.' }
         if ($problem) { $f.error.Text = $problem; $f.error.Visibility = 'Visible'; return }
-        $cfg.run_on = if ($f.runPc.IsChecked) { 'pc' } else { 'server' }
-        $cfg.server = $server
-        if ($key) { $cfg.openai_api_key_dpapi = Protect-JpSecret $key } elseif ($f.removeKey.IsChecked) { $cfg.openai_api_key_dpapi = '' }
-        $cfg.fast = [bool]$f.fast.IsChecked
-        $cfg.voice = if ($f.voiceKeita.IsChecked) { 'keita' } else { 'nanami' }
-        $cfg.speed = if ($f.speedSlow.IsChecked) { 'slow' } else { 'normal' }
-        Save-JpConfig $cfgFile $cfg
+        $changes = @{
+            run_on = $(if ($f.runPc.IsChecked) { 'pc' } else { 'server' }); server = $server; fast = [bool]$f.fast.IsChecked
+            voice = $(if ($f.voiceKeita.IsChecked) { 'keita' } else { 'nanami' }); speed = $(if ($f.speedSlow.IsChecked) { 'slow' } else { 'normal' })
+        }
+        # the key only changes when a new one is typed or removal is ticked
+        if ($key) { $changes.openai_api_key_dpapi = Protect-JpSecret $key } elseif ($f.removeKey.IsChecked) { $changes.openai_api_key_dpapi = '' }
+        $latest = Update-JpConfig $cfgFile $changes
+        foreach ($name in @($latest.Keys)) { $cfg[$name] = $latest[$name] }
         $w.DialogResult = $true
     })
     $f.root.Add_MouseLeftButtonDown({ $w.DragMove() })

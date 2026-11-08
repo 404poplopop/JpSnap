@@ -38,9 +38,22 @@ function Read-JpConfig([string]$file) {
     $cfg
 }
 
+# Change only these fields, in the latest config.json: another JpSnap window may have saved since this one started,
+# and writing back this window's whole snapshot would undo that (even restore a removed API key).
+function Update-JpConfig([string]$file, [hashtable]$changes) {
+    $lock = New-Object Threading.Mutex($false, 'Local\JpSnapConfig')
+    try { $owned = $lock.WaitOne(5000) } catch [Threading.AbandonedMutexException] { $owned = $true }
+    try {
+        $latest = Read-JpConfig $file
+        foreach ($name in $changes.Keys) { $latest[$name] = $changes[$name] }
+        Save-JpConfig $file $latest
+        $latest
+    } finally { if ($owned) { $lock.ReleaseMutex() }; $lock.Dispose() }
+}
+
 function Save-JpConfig([string]$file, $cfg) {
-    # temp file + move, so a crash never leaves a half-written config
-    $tmp = "$file.tmp"
+    # own temp file + move, so a crash never leaves a half-written config and two writers never share a temp file
+    $tmp = "$file.$PID.tmp"
     [IO.File]::WriteAllText($tmp, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Move-Item -Force $tmp $file
 }

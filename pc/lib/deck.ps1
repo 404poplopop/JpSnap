@@ -10,6 +10,7 @@ function Add-JpHistory([string]$replyJson) {
 function ConvertTo-JpField($s) { [Net.WebUtility]::HtmlEncode((([string]$s) -replace '\s+', ' ')) }
 
 function Save-JpWords($tokens) {
+    if ($st.busy) { $ui.status.Text = 'Details still loading: save in a moment'; return }  # quick results have no explanations
     [void](New-Item -ItemType Directory -Force $dataDir)
     $deck = Join-Path $dataDir 'deck.tsv'
     $have = if (Test-Path $deck) { [IO.File]::ReadAllLines($deck, $utf8) | ForEach-Object { ($_ -split "`t")[0] } } else { @() }
