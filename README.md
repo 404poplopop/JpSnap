@@ -1,5 +1,7 @@
 # JpSnap
 
+I realized that I couldn't learn through immersion without being able to quickly translate the interface or the caption, so I quickly made this project.
+
 Press **Ctrl+Alt+J**, drag over Japanese text anywhere on screen, and a small overlay breaks it down for learning:
 
 - every word with its kana reading, pitch accent line (top = high, bottom = low), part-of-speech colored underline and romaji
