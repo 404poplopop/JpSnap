@@ -89,4 +89,4 @@ if (-not $NoStart) {  # (re)start the listener so Ctrl+Alt+J works right away, w
 Write-Host ''
 Write-JpStep 'Ready: press Ctrl+Alt+J and drag over Japanese text.' Green
 Write-JpStep "Starts with Windows: $(if (Test-JpAutoStart) { 'yes' } else { 'no' }) (change it in the settings window or run setup.bat again)"
-Write-JpStep "Translating on: $(if ($cfg.run_on -eq 'pc') { 'this PC' } else { "the server $($cfg.server)" })"
+Write-JpStep "Translating on: $(switch ($cfg.run_on) { 'pc' { 'this PC' } 'https' { "the server over HTTPS $($cfg.https_url)" } default { "the server $($cfg.server)" } })"

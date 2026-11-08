@@ -40,11 +40,17 @@
         <TextBlock Text="Translate on" Style="{StaticResource Label}"/>
         <StackPanel Orientation="Horizontal">
           <RadioButton x:Name="runServer" GroupName="run" Content="Server (ssh)"/>
+          <RadioButton x:Name="runHttps" GroupName="run" Content="Server (HTTPS)"/>
           <RadioButton x:Name="runPc" GroupName="run" Content="This PC"/>
         </StackPanel>
 
         <TextBlock Text="Server (user@host)" Style="{StaticResource Label}"/>
         <TextBox x:Name="server" AutomationProperties.Name="Server (user@host)"/>
+
+        <TextBlock Text="HTTPS address (when ssh is blocked, e.g. on a VPN)" Style="{StaticResource Label}"/>
+        <TextBox x:Name="httpsUrl" AutomationProperties.Name="HTTPS address"/>
+        <PasswordBox x:Name="httpsToken" Margin="0,6,0,0" AutomationProperties.Name="HTTPS token"/>
+        <TextBlock x:Name="tokenState" Style="{StaticResource Note}"/>
 
         <TextBlock Text="OpenAI API key (optional)" Style="{StaticResource Label}"/>
         <PasswordBox x:Name="apiKey" AutomationProperties.Name="OpenAI API key (optional)"/>
@@ -54,6 +60,12 @@
         <TextBlock Text="Speed" Style="{StaticResource Label}"/>
         <CheckBox x:Name="fast" Content="Fast mode: quick translation first (~10 s), details follow"/>
         <TextBlock Text="Runs a quick and a full lookup at the same time, so each snip uses two requests." Style="{StaticResource Note}"/>
+        <CheckBox x:Name="fastTier" Content="Fast tier: about 1.5× faster answers" Margin="0,8,0,0"/>
+        <TextBlock Text="Codex's priority service tier; uses your plan's limits faster." Style="{StaticResource Note}"/>
+
+        <TextBlock Text="Model" Style="{StaticResource Label}"/>
+        <ComboBox x:Name="model" Foreground="#202020" AutomationProperties.Name="Model"/>
+        <TextBlock Text="gpt-6-luna is the quick one; bigger models explain more and take longer." Style="{StaticResource Note}"/>
 
         <TextBlock Text="Windows" Style="{StaticResource Label}"/>
         <CheckBox x:Name="autoStart" Content="Start with Windows (Ctrl+Alt+J always ready)"/>

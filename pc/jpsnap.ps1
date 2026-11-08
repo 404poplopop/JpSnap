@@ -1,4 +1,4 @@
-﻿# JpSnap: snip a screen region, break its Japanese down with codex (on the server or this PC), read it aloud.
+﻿# JpSnap: snip a screen region, break its Japanese down with codex (on the server over ssh or HTTPS, or this PC), read it aloud.
 # lib\*.ps1 hold the functions (config, backend, render, speech, deck, settings); ui\*.xaml the windows.
 param([string]$TestImage)  # test hook: send this PNG and print the JSON reply, no UI
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms, System.Drawing
@@ -24,7 +24,9 @@ if ($TestImage) { [Console]::OutputEncoding = $utf8; (Read-JpCore (Start-JpTrans
 
 Set-JpPopupsRight
 # First run (or a broken server entry): settings before the snip.
-if ($cfg.run_on -eq 'server' -and -not (Test-JpServer $cfg.server)) { if (-not (Show-JpSettings $null)) { exit } }
+$unset = ($cfg.run_on -eq 'server' -and -not (Test-JpServer $cfg.server)) -or
+    ($cfg.run_on -eq 'https' -and -not ((Test-JpHttpsUrl $cfg.https_url) -and (Unprotect-JpSecret $cfg.https_token_dpapi)))
+if ($unset) { if (-not (Show-JpSettings $null)) { exit } }
 
 # ---------- snip: the native overlay (same as Win+Shift+S) puts the selection on the clipboard ----------
 [Windows.Forms.Clipboard]::Clear()

@@ -1,0 +1,17 @@
+# Template: install with the sed line in README.md (fills in __USER__, __HOME__ and __NODE_BIN__ for codex's node).
+[Unit]
+Description=JpSnap HTTPS front (127.0.0.1:8893, behind a TLS reverse proxy)
+After=network-online.target
+
+[Service]
+User=__USER__
+ExecStart=__HOME__/.local/share/jpsnap-venv/bin/python -I __HOME__/.local/share/jpsnap/server/jp-https
+Environment=PATH=__NODE_BIN__:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+MemoryMax=3G
+
+[Install]
+WantedBy=multi-user.target
