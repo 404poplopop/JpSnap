@@ -1,0 +1,8 @@
+# secrets and per-machine state (PC install dir mirrors pc/)
+config.json
+jpsnap_key
+jpsnap_key.pub
+known_hosts
+*.log
+venv/
+__pycache__/

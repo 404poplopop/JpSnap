@@ -1,0 +1,6 @@
+#!/bin/bash
+# Forced ssh command for the PC's JpSnap key; the work is in jpsnap_core.py (same file runs on the PC in "pc" mode).
+here=$(dirname "$(readlink -f "$0")")/..
+case "${SSH_ORIGINAL_COMMAND:-}" in tts) mode=tts ;; *) mode=translate ;; esac
+export JPSNAP_CODEX="$HOME/.local/bin/codex"
+exec "$HOME/.local/share/jpsnap-venv/bin/python" -I "$here/jpsnap_core.py" "$mode"
