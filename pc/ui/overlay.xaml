@@ -1,0 +1,66 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="JpSnap" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight" ResizeMode="NoResize" MaxWidth="620" FontFamily="Yu Gothic UI" Foreground="#F0F0F0">
+  <Window.Resources>
+    <!-- Flat icon button; the toggle variant gets a blue background while on. -->
+    <ControlTemplate x:Key="Flat" TargetType="ButtonBase">
+      <Border x:Name="b" Background="Transparent" CornerRadius="6" Padding="7,0">
+        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#33FFFFFF"/></Trigger>
+        <Trigger Property="ToggleButton.IsChecked" Value="True"><Setter TargetName="b" Property="Background" Value="#663D8BFD"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.35"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+    <Style TargetType="Button">
+      <Setter Property="Template" Value="{StaticResource Flat}"/>
+      <Setter Property="Foreground" Value="#F0F0F0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="13"/>
+      <Setter Property="MinWidth" Value="30"/><Setter Property="Height" Value="28"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Focusable" Value="False"/>
+    </Style>
+    <Style TargetType="ToggleButton">
+      <Setter Property="Template" Value="{StaticResource Flat}"/>
+      <Setter Property="Foreground" Value="#F0F0F0"/><Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="MinWidth" Value="30"/><Setter Property="Height" Value="28"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Focusable" Value="False"/>
+    </Style>
+  </Window.Resources>
+  <Grid Margin="12">
+    <!-- The shadow sits on its own layer so it does not blur the text. -->
+    <Border CornerRadius="12" Background="#1B1B1F">
+      <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.55"/></Border.Effect>
+    </Border>
+    <Border x:Name="root" CornerRadius="12" Background="#F51B1B1F" BorderBrush="#30FFFFFF" BorderThickness="1" Padding="14,8,10,12">
+      <StackPanel MinWidth="280" MaxWidth="590">
+        <DockPanel>
+          <Button x:Name="close" DockPanel.Dock="Right" Content="&#xE711;" ToolTip="Close (Esc)"/>
+          <Button x:Name="settings" DockPanel.Dock="Right" Content="&#xE713;" ToolTip="Settings"/>
+          <Button x:Name="save" DockPanel.Dock="Right" Content="&#xE734;" ToolTip="Save the words to your Anki deck (Documents\JpSnap\deck.tsv)" IsEnabled="False"/>
+          <ToggleButton x:Name="speed" DockPanel.Dock="Right" Content="1×" ToolTip="Speech speed: normal / slow"/>
+          <Button x:Name="play" DockPanel.Dock="Right" Content="&#xE768;" ToolTip="Read the sentence aloud (Space)" IsEnabled="False"/>
+          <ToggleButton x:Name="fast" DockPanel.Dock="Right" Content="⚡" FontFamily="Segoe UI Symbol" ToolTip="Fast mode: a quick result first, details follow (next snip)"/>
+          <TextBlock x:Name="status" Text="Translating…" Opacity="0.65" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+        </DockPanel>
+        <ProgressBar x:Name="busy" IsIndeterminate="True" Height="2" Margin="0,6,4,0" Foreground="#3D8BFD" Background="#14FFFFFF" BorderThickness="0"/>
+        <WrapPanel x:Name="words" Margin="0,6,0,0"/>
+        <Border x:Name="now" Visibility="Collapsed" Margin="0,8,4,0" Padding="12,6" CornerRadius="8" Background="#333D8BFD">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="nowWord" FontSize="30" VerticalAlignment="Center"/>
+            <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <Border x:Name="nowPitch"/>
+                <TextBlock x:Name="nowRomaji" FontSize="15" Opacity="0.75" Margin="10,0,0,1" VerticalAlignment="Bottom"/>
+              </StackPanel>
+              <TextBlock x:Name="nowMeaning" FontSize="13" Opacity="0.75" TextWrapping="Wrap" MaxWidth="420"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <TextBlock x:Name="translation" TextWrapping="Wrap" FontSize="16" Margin="0,10,4,0"/>
+        <StackPanel x:Name="grammar" Margin="0,6,4,0"/>
+        <Border Height="1" Background="#1FFFFFFF" Margin="0,10,4,6"/>
+        <WrapPanel x:Name="legend" Opacity="0.75"/>
+        <TextBlock x:Name="hint" FontSize="11" Opacity="0.5" TextWrapping="Wrap" Margin="0,4,4,0"
+                   Text="Hover: meaning · +Alt: whole word · +Shift: part of the sentence · Click: listen · Right-click: save"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

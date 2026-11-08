@@ -1,0 +1,5 @@
+Read the Japanese text in the image and answer in the JSON schema. Be quick: short fields only.
+sentence: the Japanese text exactly as written (one line).
+translation: natural English.
+tokens: split sentence into words in order, so that joining every surface gives back sentence exactly (punctuation are tokens too). Keep a conjugated verb or adjective whole. For each token: reading in hiragana as pronounced at this exact spot (8 in 8杯 is はっ); romaji (Hepburn); pos; meaning in this context (2-5 English words); pitch: Tokyo pitch accent, one letter H or L per mora, letters only (きのう -> LHH). For punctuation: reading, romaji and pitch empty; meaning = the mark's Japanese name and reading (e.g. 読点 (とうてん) - comma).
+If there is no Japanese, put the text in sentence, translate it, and leave tokens empty. Do not run any commands.

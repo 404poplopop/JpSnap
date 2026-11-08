@@ -1,4 +1,4 @@
-# JpSnap installer: hotkey shortcut + PC-mode runtime (venv with edge-tts). Safe to rerun.
+﻿# JpSnap installer: hotkey shortcut + PC-mode runtime (venv with edge-tts). Safe to rerun.
 $dir = "$env:LOCALAPPDATA\JpSnap"
 # Start Menu entry for a manual start; the hotkey comes from hotkey.ps1 (shortcut hotkeys need an Explorer rescan).
 $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Programs'))\JpSnap.lnk")
