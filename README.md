@@ -98,4 +98,14 @@ playback. Real hovering and right-click are checked by hand.
 - The server setting must be `user@host` (no spaces or leading `-`) and ssh gets `--` before it, so it cannot become
   an ssh option. The API key is encrypted with DPAPI and only decrypted for the request that needs it.
 
+## History
+
+- 2026-11-08: first version (snip, word breakdown with pitch accent, hover explanations, karaoke voice, Anki deck);
+  audit: codex runs without tools, no addresses or names in the repo, deck HTML-escaped.
+- 2026-11-08: Alt / Shift hover for whole words and sentence parts, contextual readings (8杯 = はっぱい), word voice prefetch.
+- 2026-11-08 (was PR #2, Copilot-reviewed): fast mode, settings window, split into `pc/lib` + `pc/ui`, DPAPI API key,
+  hover popup instead of WPF tooltips. Review fixes: loading bar after a failed full lookup, config merge across
+  windows, no cards from quick results, karaoke redraw after a re-render, keyboard keys and screen-reader names.
+  The repo was recreated afterwards to drop old commits; the PR page went with it.
+
 Third-party data and services: see `THIRD_PARTY.md`.
