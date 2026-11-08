@@ -3,13 +3,14 @@
 function Show-JpSettings($owner) {
     $w = Read-JpXaml "$dir\ui\settings.xaml"
     $f = Get-JpNamed $w @('root', 'runServer', 'runPc', 'server', 'apiKey', 'keyState', 'removeKey', 'fast',
-        'voiceNanami', 'voiceKeita', 'speedNormal', 'speedSlow', 'error', 'saveSettings', 'cancelSettings')
+        'voiceNanami', 'voiceKeita', 'speedNormal', 'speedSlow', 'autoStart', 'error', 'saveSettings', 'cancelSettings')
     $f.runServer.IsChecked = $cfg.run_on -eq 'server'; $f.runPc.IsChecked = $cfg.run_on -eq 'pc'
     $f.server.Text = $cfg.server
     $hasKey = [bool](Unprotect-JpSecret $cfg.openai_api_key_dpapi)
     $f.keyState.Text = if ($hasKey) { 'A key is saved, encrypted for your Windows account. Type a new one to replace it.' } else { 'Empty: uses the Codex subscription. A key is stored encrypted for your Windows account.' }
     $f.removeKey.Visibility = if ($hasKey) { 'Visible' } else { 'Collapsed' }
     $f.fast.IsChecked = [bool]$cfg.fast
+    $autoBefore = Test-JpAutoStart; $f.autoStart.IsChecked = $autoBefore
     $f.voiceNanami.IsChecked = $cfg.voice -eq 'nanami'; $f.voiceKeita.IsChecked = $cfg.voice -eq 'keita'
     $f.speedNormal.IsChecked = $cfg.speed -eq 'normal'; $f.speedSlow.IsChecked = $cfg.speed -eq 'slow'
 
@@ -26,6 +27,7 @@ function Show-JpSettings($owner) {
         # the key only changes when a new one is typed or removal is ticked
         if ($key) { $changes.openai_api_key_dpapi = Protect-JpSecret $key } elseif ($f.removeKey.IsChecked) { $changes.openai_api_key_dpapi = '' }
         $latest = Update-JpConfig $cfgFile $changes
+        if ([bool]$f.autoStart.IsChecked -ne $autoBefore) { Set-JpAutoStart ([bool]$f.autoStart.IsChecked) $dir }  # only when changed
         foreach ($name in @($latest.Keys)) { $cfg[$name] = $latest[$name] }
         $w.DialogResult = $true
     })

@@ -51,6 +51,17 @@ function Update-JpConfig([string]$file, [hashtable]$changes) {
     } finally { if ($owned) { $lock.ReleaseMutex() }; $lock.Dispose() }
 }
 
+# ---------- start with Windows: a Startup-folder shortcut to hotkey.vbs (the hidden Ctrl+Alt+J listener) ----------
+function Get-JpAutoStartLink([string]$startupDir = [Environment]::GetFolderPath('Startup')) { Join-Path $startupDir 'JpSnap hotkey.lnk' }
+function Test-JpAutoStart([string]$startupDir = [Environment]::GetFolderPath('Startup')) { Test-Path (Get-JpAutoStartLink $startupDir) }
+function Set-JpAutoStart([bool]$on, [string]$installDir, [string]$startupDir = [Environment]::GetFolderPath('Startup')) {
+    $link = Get-JpAutoStartLink $startupDir
+    if (-not $on) { Remove-Item $link -ErrorAction SilentlyContinue; return }
+    $s = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+    $s.TargetPath = "$env:WINDIR\System32\wscript.exe"; $s.Arguments = "`"$installDir\hotkey.vbs`""
+    $s.WorkingDirectory = $installDir; $s.Description = 'JpSnap: Ctrl+Alt+J listener'; $s.Save()
+}
+
 function Save-JpConfig([string]$file, $cfg) {
     # own temp file + move, so a crash never leaves a half-written config and two writers never share a temp file
     $tmp = "$file.$PID.tmp"

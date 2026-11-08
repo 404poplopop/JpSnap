@@ -67,7 +67,8 @@ try {
         for ($i = 0; $i -lt 120; $i++) { Start-Sleep -Milliseconds 100; $nwd = Find-JpEl $win 'nowWord'
             if ($nwd -and -not $nwd.Current.IsOffscreen) { $n = $nwd.Current.Name; if ($n -and $last -ne $n) { $last = $n; $seq += "$n@$([int]$playClock.ElapsedMilliseconds)" } } else { $last = '' }
             if ($i -eq 25 -and $seq.Count -ge 2) { $gg = [Drawing.Graphics]::FromImage($shot); $gg.CopyFromScreen([int]$r.X - 10, [int]$r.Y - 10, 0, 0, $shot.Size); $gg.Dispose(); $shot.Save("$env:TEMP\jpsnap_shot2.png") } } }
-    $log += "KARAOKE=" + $(if ($seq.Count -ge 3) { 'PASS' } else { 'FAIL' }) + " " + ($seq -join ' > ')
+    $why = if (-not $play) { '(play button not found)' } elseif (-not $play.Current.IsEnabled) { '(play button disabled)' } else { '' }
+    $log += "KARAOKE=" + $(if ($seq.Count -ge 3) { 'PASS' } else { "FAIL $why" }) + " " + ($seq -join ' > ')
     # star -> all words saved to the deck
     $sv = if ($win) { Find-JpEl $win 'save' }
     if ($sv) { Invoke-JpEl $sv; Start-Sleep -Milliseconds 500 }

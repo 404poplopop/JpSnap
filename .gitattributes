@@ -1,0 +1,2 @@
+# setup.bat must keep CRLF line endings in clones and zip downloads
+*.bat -text

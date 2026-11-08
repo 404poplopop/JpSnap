@@ -20,5 +20,13 @@ $other = Read-JpConfig $f; $other.voice = 'nanami'; Save-JpConfig $f $other
 $merged = [IO.File]::ReadAllText($f) | ConvertFrom-Json
 $noTmp = -not (Get-ChildItem (Split-Path $f) -Filter "$(Split-Path -Leaf $f).*.tmp")
 $out += 'MERGE_KEEPS_OTHER_WINDOW=' + $(if ($merged.voice -eq 'nanami' -and $merged.speed -eq 'slow' -and $merged.openai_api_key_dpapi -and $noTmp) { 'PASS' } else { 'FAIL' })
+# start with Windows: the shortcut is made, points at hotkey.vbs, and is removed again (in a temp folder, not the real Startup)
+$startup = Join-Path $env:TEMP 'jpsnap_startup_test'; [void](New-Item -ItemType Directory -Force $startup)
+Set-JpAutoStart $true 'C:\JpSnapTest' $startup
+$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut((Get-JpAutoStartLink $startup))
+$made = (Test-JpAutoStart $startup) -and $lnk.TargetPath -like '*\wscript.exe' -and $lnk.Arguments -eq '"C:\JpSnapTest\hotkey.vbs"'
+Set-JpAutoStart $false 'C:\JpSnapTest' $startup
+$out += 'AUTOSTART_ON_OFF=' + $(if ($made -and -not (Test-JpAutoStart $startup)) { 'PASS' } else { 'FAIL' })
+Remove-Item $startup
 Remove-Item $f
 $out -join "`r`n"

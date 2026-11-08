@@ -11,6 +11,17 @@ Press **Ctrl+Alt+J**, drag over Japanese text anywhere on screen, and a small ov
 - ⚙ settings: server or this PC, server address, optional API key, fast mode, voice (Nanami / Keita), speech speed
 - drag to move, Esc / ✕ to close
 
+## Quick start (Windows 10/11)
+
+1. **Code → Download ZIP** on GitHub and extract it (or `git clone`).
+2. Double-click **`setup.bat`**. It installs JpSnap for your Windows user (no admin) and asks whether to start it with
+   Windows. Run it again any time to update; your settings are kept.
+3. Press **Ctrl+Alt+J** and drag over Japanese text.
+
+Needs Python 3.11–3.14 (`winget install Python.Python.3.12`) and the Codex app or CLI signed in (`codex login`), or an
+OpenAI API key in ⚙ settings. "Start with Windows" can also be switched in ⚙ settings.
+Windows may warn about a file from the internet when you start `setup.bat`; choose *Run* (or unblock the zip first).
+
 Translation runs through the Codex CLI (`codex exec`, model `gpt-6-luna`, JSON output schema) on your Codex subscription,
 or per run on your own OpenAI API key. Pitch accent comes from the Kanjium dictionary (GPT estimate as fallback, drawn faint).
 The voice is edge-tts (`ja-JP-NanamiNeural` or `ja-JP-KeitaNeural`) with word timings.
@@ -30,7 +41,7 @@ The voice is edge-tts (`ja-JP-NanamiNeural` or `ja-JP-KeitaNeural`) with word ti
 | `pc/lib/deck.ps1`, `pc/lib/settings.ps1` | PC | history and Anki deck; settings window |
 | `pc/ui/overlay.xaml`, `pc/ui/settings.xaml` | PC | the two windows |
 | `pc/hotkey.ps1` | PC | resident Ctrl+Alt+J listener (Startup folder) |
-| `pc/install.ps1` | PC | Start Menu entry, Startup listener, venv with edge-tts, selftest |
+| `setup.bat`, `pc/install.ps1` | PC | install / update: app files, venv with edge-tts, selftest, Start Menu entry, start with Windows |
 | `pc/ui_test.ps1`, `pc/run_ui_test.ps1` | PC | session-1 UI test (UI Automation only, no mouse/keyboard input) |
 | `pc/hover_test.ps1` | PC | hover levels and moving between words, on the real functions, no window or input |
 | `pc/config_test.ps1` | PC | config defaults, plain-text key migration, server and key checks |
@@ -46,11 +57,9 @@ ln -s ~/.local/share/jpsnap/server/jp-translate ~/.local/bin/jp-translate
 echo "command=\"$HOME/.local/bin/jp-translate\",restrict $(cat jpsnap_key.pub)" >> ~/.ssh/authorized_keys
 ```
 
-**PC** (Windows 11, Python 3.11 via `py`): copy `pc\*` (with `lib` and `ui`) to `%LOCALAPPDATA%\JpSnap`, the core files
-(`jpsnap_core.py schema.json prompt.txt prompt_fast.txt accents.txt`) to `%LOCALAPPDATA%\JpSnap\core`, the private key
-to `jpsnap_key` and the server host key to `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then run
-`powershell -NoProfile -ExecutionPolicy Bypass -File %LOCALAPPDATA%\JpSnap\install.ps1`.
-The first snip opens the settings until a server is set.
+**PC**: run `setup.bat` (above). For server mode put the private key in `%LOCALAPPDATA%\JpSnap\jpsnap_key` and the
+server host key in `known_hosts` as `jpsnap-server ssh-ed25519 AAAA...`, then choose *Server* in ⚙ settings.
+`setup.bat -AutoStart Yes|No|Keep` answers the start-with-Windows question without asking.
 
 ## Settings
 
@@ -95,6 +104,8 @@ playback. Real hovering and right-click are checked by hand.
   command only picks `translate` or `tts`. Everything on stdin is checked in `jpsnap_core.py`
   (`parse_translate_request`, `parse_tts_request`): JSON header, key format `sk-[A-Za-z0-9_-]`, PNG signature,
   voice and rate from fixed lists.
+- `setup.bat` installs the voice runtime from `pc/requirements.txt`: exact versions with SHA-256 hashes, wheels only
+  (`--require-hashes --only-binary=:all:`), so a changed or newly published package is refused and no build scripts run.
 - The server setting must be `user@host` (no spaces or leading `-`) and ssh gets `--` before it, so it cannot become
   an ssh option. The API key is encrypted with DPAPI and only decrypted for the request that needs it.
 

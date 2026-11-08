@@ -6,9 +6,11 @@ function Start-JpCore([string]$mode, [string]$stdin) {
     if ($cfg.run_on -eq 'pc') {
         $psi = New-Object Diagnostics.ProcessStartInfo "$dir\venv\Scripts\pythonw.exe"
         $psi.Arguments = "-I `"$dir\core\jpsnap_core.py`" $mode"
+        # the Codex app's bundled CLI, else codex.exe on PATH (the npm codex.cmd shim cannot be started without a shell)
         $codex = Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter codex.exe -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($codex) { $psi.EnvironmentVariables['JPSNAP_CODEX'] = $codex.FullName }
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $codex) { $codex = Get-Command codex.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source }
+        if ($codex) { $psi.EnvironmentVariables['JPSNAP_CODEX'] = $codex }
     } else {
         if (-not (Test-JpServer $cfg.server)) { throw "Server must look like user@host (settings)." }
         $psi = New-Object Diagnostics.ProcessStartInfo "$env:WINDIR\System32\OpenSSH\ssh.exe"

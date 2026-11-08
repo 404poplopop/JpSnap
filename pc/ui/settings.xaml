@@ -55,6 +55,9 @@
         <CheckBox x:Name="fast" Content="Fast mode: quick translation first (~10 s), details follow"/>
         <TextBlock Text="Runs a quick and a full lookup at the same time, so each snip uses two requests." Style="{StaticResource Note}"/>
 
+        <TextBlock Text="Windows" Style="{StaticResource Label}"/>
+        <CheckBox x:Name="autoStart" Content="Start with Windows (Ctrl+Alt+J always ready)"/>
+
         <TextBlock Text="Voice" Style="{StaticResource Label}"/>
         <StackPanel Orientation="Horizontal">
           <RadioButton x:Name="voiceNanami" GroupName="voice" Content="Nanami (female)"/>
