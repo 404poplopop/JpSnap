@@ -108,4 +108,7 @@ playback. Real hovering and right-click are checked by hand.
   windows, no cards from quick results, karaoke redraw after a re-render, keyboard keys and screen-reader names.
   The repo was recreated afterwards to drop old commits; the PR page went with it.
 
-Third-party data and services: see `THIRD_PARTY.md`.
+## License
+
+Code: MIT (`LICENSE`). `accents.txt` keeps its own license, CC BY-SA 4.0 (Kanjium); third-party data and
+services: see `THIRD_PARTY.md`.
