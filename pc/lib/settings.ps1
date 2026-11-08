@@ -41,6 +41,7 @@ function Show-JpSettings($owner) {
         $w.DialogResult = $true
     })
     $f.root.Add_MouseLeftButtonDown({ $w.DragMove() })
+    $w.MaxHeight = [Windows.SystemParameters]::WorkArea.Height  # small or scaled screens: the panel scrolls instead
     if ($owner) { $w.Owner = $owner; $w.WindowStartupLocation = 'CenterOwner' }
     [bool]$w.ShowDialog()
 }

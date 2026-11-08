@@ -37,6 +37,7 @@ function Start-JpHttps([string]$mode, [string]$body) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         $handler = New-Object Net.Http.HttpClientHandler
         $handler.DefaultProxyCredentials = [Net.CredentialCache]::DefaultCredentials  # proxies that want the Windows login
+        $handler.AllowAutoRedirect = $false  # a redirect would replay the screenshot, token and API key to another host
         $script:JpHttp = New-Object Net.Http.HttpClient($handler); $script:JpHttp.Timeout = [TimeSpan]::FromSeconds(190)
     }
     $req = New-Object Net.Http.HttpRequestMessage('Post', "$($cfg.https_url.TrimEnd('/'))/$mode")

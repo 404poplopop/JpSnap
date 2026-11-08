@@ -34,6 +34,7 @@
       <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.55"/></Border.Effect>
     </Border>
     <Border x:Name="root" CornerRadius="12" Background="#FA1B1B1F" BorderBrush="#30FFFFFF" BorderThickness="1" Padding="20,14,20,18">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel Width="380">
         <TextBlock Text="JpSnap settings" FontSize="17" FontWeight="SemiBold"/>
 
@@ -88,6 +89,7 @@
           <Button x:Name="saveSettings" Content="Save" IsDefault="True"/>
         </StackPanel>
       </StackPanel>
+      </ScrollViewer>
     </Border>
   </Grid>
 </Window>

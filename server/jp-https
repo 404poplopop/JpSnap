@@ -44,11 +44,11 @@ class Handler(BaseHTTPRequestHandler):
         if not mode or not 0 < size <= MAX_BODY:
             self.close_connection = True
             return self.reply(404 if not mode else 413, b"Not found" if not mode else b"Body missing or too large")
-        body = self.rfile.read(size)
-        if not SLOTS.acquire(blocking=False):
+        if not SLOTS.acquire(blocking=False):  # before reading: busy requests never hold a 30 MB body in memory
+            self.close_connection = True
             return self.reply(503, b"Server busy, try again")
         try:
-            code, out, err = run_core(mode, body, self.env, TIMEOUT)
+            code, out, err = run_core(mode, self.rfile.read(size), self.env, TIMEOUT)
         finally:
             SLOTS.release()
         if code is None:
@@ -105,6 +105,10 @@ def selftest():
     assert post("/translate", b"", size=MAX_BODY + 1)[0] == 413
     code, text = post("/translate", b"not a header\nAAAA")  # reaches the core, which refuses it
     assert code == 422 and b"Bad request header" in text, (code, text)
+    taken = [SLOTS.acquire(blocking=False) for _ in range(6)]  # all slots busy: refused without reading the body
+    assert all(taken) and post("/translate", b"x" * 1000)[0] == 503
+    for _ in taken:
+        SLOTS.release()
     srv.shutdown()
     # a timed-out core loses its children too (codex runs as one)
     with tempfile.NamedTemporaryFile("r") as pidfile:
